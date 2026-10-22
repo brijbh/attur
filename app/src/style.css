@@ -106,6 +106,15 @@ html.hc .card { background: #000; }
   filter: drop-shadow(0 5px 0 #8a2a6a) drop-shadow(0 12px 20px rgba(0, 0, 0, 0.35));
   animation: logo-bob 3s ease-in-out infinite;
 }
+.logo-img {
+  width: 100%; max-width: 330px; height: auto; display: block; margin: 0 auto;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
+  animation: logo-bob 3s ease-in-out infinite;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 @keyframes logo-bob { 50% { transform: translateY(-6px) rotate(-1.5deg); } }
 .tagline { margin: 0.4rem 0 0; font-family: var(--font-display); font-size: 1.25rem; color: var(--mint); letter-spacing: 0.15em; text-transform: uppercase; }
 .home-blurb { margin: 0; font-size: 1.15rem; line-height: 1.5; color: var(--muted); }

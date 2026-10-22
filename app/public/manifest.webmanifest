@@ -6,5 +6,5 @@
   "orientation": "portrait",
   "background_color": "#2a1458",
   "theme_color": "#2a1458",
-  "icons": [{ "src": "/objects/ball.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }]
+  "icons": [{ "src": "/favicon.jpg", "sizes": "128x128", "type": "image/jpeg", "purpose": "any" }]
 }

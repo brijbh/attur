@@ -17,7 +17,8 @@ function home() {
     <div class="floaters" aria-hidden="true">${floaters}</div>
     <div class="home-inner">
       <div class="logo-wrap pop-in">
-        <h1 class="logo">Attur</h1>
+        <h1 class="sr-only">Attur</h1>
+        <img class="logo-img" src="/atturr-logo.png" alt="Attur" />
         <p class="tagline">Remember the Way</p>
       </div>
       <p class="home-blurb">Walk the stairs. Spot the objects.<br>Remember them in the classroom!</p>
@@ -142,7 +143,7 @@ applySettings();
 initFx();
 // Warm image cache so objects pop instantly
 OBJECTS.forEach((o) => (new Image().src = o.img));
-['/bg/staircase.png', '/bg/classroom.png'].forEach((s) => (new Image().src = s));
+['/bg/staircase.png', '/bg/classroom.png', '/atturr-logo.png', '/favicon.jpg'].forEach((s) => (new Image().src = s));
 home();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
