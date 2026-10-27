@@ -90,6 +90,19 @@ function comboCheer(combo: number) {
 /* ---------------- Intro ---------------- */
 
 async function intro(c: Ctx) {
+  const modeDesc =
+    c.challenge.id === 'audio'
+      ? (c.level.audioSubMode === 'order' || c.level.audioSubMode === 'chain' || c.level.audioSubMode === 'master' ? '🎶 Remember sound order' : '🎧 Match sound to object')
+      : c.challenge.id === 'routine'
+      ? '🏡 Room observation'
+      : c.challenge.id === 'grid'
+      ? '🟪 Spatial matrix memory'
+      : c.challenge.id === 'assembly'
+      ? '🏭 Conveyor line recall'
+      : c.level.mode === 'place'
+      ? '🪜 Place on steps'
+      : '🔢 Recall in order';
+
   app().innerHTML = `<section class="screen intro-screen">
     <div class="card pop-in">
       <div class="intro-badge">Level ${c.levelIndex + 1}</div>
@@ -98,7 +111,7 @@ async function intro(c: Ctx) {
       <ul class="intro-facts">
         <li>🎯 ${c.level.rounds.length} rounds</li>
         <li>${c.level.reviewMs === null ? '🐢 No timer' : '⏱️ Timed'}</li>
-        <li>${c.level.mode === 'place' ? '🪜 Place on steps' : '🔢 Recall in order'}</li>
+        <li>${modeDesc}</li>
       </ul>
       <button class="btn btn-primary btn-big" id="start-btn">Let's Go!</button>
       <button class="btn btn-ghost" id="back-btn">Back to map</button>
@@ -1099,9 +1112,9 @@ async function playRoutineRound(c: Ctx, count: number): Promise<RoundResult> {
           </div>
         `).join('')}
       </div>
-      <div class="tray" id="missing-tray" style="margin-top:0.8rem;">
+      <div class="tray ${trayOptions.length > 3 ? 'small' : ''}" id="missing-tray" style="margin-top:0.8rem;">
         ${trayOptions.map((o) => `
-          <button class="card card-btn" data-id="${o.id}">
+          <button class="tile" data-id="${o.id}" aria-label="${o.name}">
             <img src="${o.img}" alt="${o.name}">
             <span>${o.name}</span>
           </button>
@@ -1117,7 +1130,7 @@ async function playRoutineRound(c: Ctx, count: number): Promise<RoundResult> {
     let misses = 0;
 
     const result = await new Promise<RoundResult>((res) => {
-      document.querySelectorAll<HTMLButtonElement>('#missing-tray .card-btn').forEach((btn) => {
+      document.querySelectorAll<HTMLButtonElement>('#missing-tray .tile').forEach((btn) => {
         btn.onclick = () => {
           const id = btn.dataset.id!;
           const { x, y } = centerOf(btn);
@@ -1234,60 +1247,74 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   // Submode 1 & 2: Hear & Find / Sound Match
   if (subMode === 'hear' || subMode === 'match') {
     const target = availableObjects[0];
-    const distractorCount = c.level.distractors || 3;
-    const distractors = shuffle(OBJECTS.filter((o) => o.id !== target.id)).slice(0, distractorCount);
-    const trayCards = shuffle([target, ...distractors]);
+    const distractorCount = Math.min(c.level.distractors || 2, 3);
+    const candidates = shuffle([target, ...availableObjects.slice(1, distractorCount + 1)]);
 
     app().innerHTML = `<section class="screen">
       ${hud(c)}
-      <div class="tray-title">Listen closely to the audio cue! Which object made that sound?</div>
+      <div class="audio-prompt-box">
+        <h2 class="audio-prompt-title">🎵 Listen & Match</h2>
+        <p class="audio-prompt-sub" id="audio-sub">Listen to the mystery sound, then tap the matching item!</p>
+      </div>
       <div class="audio-stage has-tray">
-        <div class="turntable-wrap">
-          <div class="turntable-vinyl pulse" id="turntable"></div>
+        <div class="sound-pod">
+          <div class="speaker-avatar pulse" id="speaker-pod" role="button" aria-label="Replay sound" title="Tap to listen">🔊</div>
           <div class="audio-pulse-ring active" id="pulse-ring"></div>
         </div>
-        <div class="equalizer-bar-wrap">
+        <div class="equalizer-bar-wrap" id="eq-bars">
           <div class="eq-bar active"></div>
           <div class="eq-bar active" style="animation-delay:0.1s"></div>
           <div class="eq-bar active" style="animation-delay:0.2s"></div>
           <div class="eq-bar active" style="animation-delay:0.15s"></div>
           <div class="eq-bar active" style="animation-delay:0.25s"></div>
         </div>
-        <button class="btn btn-secondary btn-pill" id="replay-sound">🔊 Replay Sound</button>
+        <button class="btn btn-secondary btn-pill" id="replay-sound" style="font-size:0.9rem; padding:0.35rem 1.1rem; min-height:0; margin-top:0.2rem;">▶ Replay Sound</button>
       </div>
-      <div class="tray" id="audio-tray" style="margin-top:0.8rem;">
-        ${trayCards.map((o) => `
-          <button class="card card-btn" data-id="${o.id}">
+      <div class="tray ${candidates.length > 3 ? 'small' : ''}" id="audio-tray" style="margin-top:0.6rem; max-width:440px;">
+        ${candidates.map((o) => `
+          <button class="tile audio-tile" data-id="${o.id}" aria-label="${o.name}">
             <img src="${o.img}" alt="${o.name}">
             <span>${o.name}</span>
+            <span class="tile-audio-tag">🔊 listen</span>
           </button>
         `).join('')}
       </div>
     </section>`;
 
     bindQuit(c);
+
     const playCue = () => {
       sfx.objectSound(target.id);
       const ring = document.getElementById('pulse-ring');
       if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
-      const vinyl = document.getElementById('turntable');
-      if (vinyl) { vinyl.classList.remove('pulse'); void vinyl.offsetWidth; vinyl.classList.add('pulse'); }
+      const spk = document.getElementById('speaker-pod');
+      if (spk) { spk.classList.remove('pulse'); void spk.offsetWidth; spk.classList.add('pulse'); }
+      const bars = document.querySelectorAll('.eq-bar');
+      bars.forEach((b) => b.classList.add('active'));
+      setTimeout(() => bars.forEach((b) => b.classList.remove('active')), 600);
     };
 
     setTimeout(playCue, 400);
     document.getElementById('replay-sound')!.onclick = () => { sfx.tap(); playCue(); };
+    document.getElementById('speaker-pod')!.onclick = () => { sfx.tap(); playCue(); };
 
     let roundScore = 0;
     let misses = 0;
+    let locked = false;
 
     const result = await new Promise<RoundResult>((res) => {
-      document.querySelectorAll<HTMLButtonElement>('#audio-tray .card-btn').forEach((btn) => {
+      document.querySelectorAll<HTMLButtonElement>('#audio-tray .tile').forEach((btn) => {
         btn.onclick = () => {
+          if (locked) return;
           const id = btn.dataset.id!;
+          const obj = OBJECTS.find((o) => o.id === id) || { name: id };
           const { x, y } = centerOf(btn);
 
+          sfx.objectSound(id);
+
           if (id === target.id) {
-            btn.classList.add('correct');
+            locked = true;
+            btn.classList.add('good');
             c.combo++;
             const pts = 150 + 30 * Math.min(c.combo - 1, 8);
             roundScore += pts;
@@ -1296,13 +1323,20 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
             sfx.correct(c.combo);
             starBurst(innerWidth / 2, innerHeight / 2);
             floatText(x, y - 25, `+${pts}`);
-            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.35), score: roundScore }), 600);
+            const sub = document.getElementById('audio-sub');
+            if (sub) sub.textContent = `✨ Correct! That's the ${target.name}!`;
+            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.35), score: roundScore }), 750);
           } else {
             c.combo = 0;
             misses++;
             btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
             sfx.wrong();
-            floatText(x, y - 25, 'Sound mismatch', 'bad');
+            floatText(x, y - 25, `That's the ${obj.name}!`, 'bad');
+            const sub = document.getElementById('audio-sub');
+            if (sub) sub.textContent = `That was the ${obj.name}! Listen to the sound again...`;
+            setTimeout(() => {
+              playCue();
+            }, 700);
           }
         };
       });
@@ -1319,10 +1353,13 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
 
   app().innerHTML = `<section class="screen">
     ${hud(c)}
-    <div class="tray-title" id="audio-title">🎵 Listen carefully to the rhythm sequence...</div>
+    <div class="audio-prompt-box">
+      <h2 class="audio-prompt-title" id="audio-title">🎵 Listen carefully to the rhythm sequence...</h2>
+      <p class="audio-prompt-sub">Remember the order of the sounds!</p>
+    </div>
     <div class="audio-stage">
-      <div class="turntable-wrap">
-        <div class="turntable-vinyl" id="turntable"></div>
+      <div class="sound-pod">
+        <div class="speaker-avatar" id="speaker-pod">🔊</div>
         <div class="audio-pulse-ring" id="pulse-ring"></div>
       </div>
       <div class="equalizer-bar-wrap" id="eq-bars">
@@ -1341,13 +1378,13 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   // Play sequence
   const playSeq = async () => {
     const ring = document.getElementById('pulse-ring');
-    const vinyl = document.getElementById('turntable');
+    const spk = document.getElementById('speaker-pod');
     const bars = document.querySelectorAll('.eq-bar');
 
     for (let i = 0; i < sequence.length; i++) {
       const item = sequence[i];
       if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
-      if (vinyl) { vinyl.classList.remove('pulse'); void vinyl.offsetWidth; vinyl.classList.add('pulse'); }
+      if (spk) { spk.classList.remove('pulse'); void spk.offsetWidth; spk.classList.add('pulse'); }
       bars.forEach((b) => b.classList.add('active'));
 
       sfx.objectSound(item.id);
@@ -1380,11 +1417,12 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   speak('Tap the objects in order!');
 
   const recallTray = document.createElement('div');
-  recallTray.className = 'tray';
+  recallTray.className = `tray ${trayCards.length > 3 ? 'small' : ''}`;
   recallTray.id = 'audio-recall-tray';
   recallTray.style.marginTop = '0.5rem';
+  recallTray.style.maxWidth = '440px';
   recallTray.innerHTML = trayCards.map((o) => `
-    <button class="card card-btn" data-id="${o.id}">
+    <button class="tile audio-tile" data-id="${o.id}" aria-label="${o.name}">
       <img src="${o.img}" alt="${o.name}">
       <span>${o.name}</span>
     </button>
@@ -1397,7 +1435,7 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   let roundScore = 0;
 
   const result = await new Promise<RoundResult>((res) => {
-    document.querySelectorAll<HTMLButtonElement>('#audio-recall-tray .card-btn').forEach((btn) => {
+    document.querySelectorAll<HTMLButtonElement>('#audio-recall-tray .tile').forEach((btn) => {
       btn.onclick = () => {
         const id = btn.dataset.id!;
         const expected = sequence[placed];
