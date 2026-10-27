@@ -49,13 +49,14 @@ interface SaveData {
   };
 }
 
-const KEY = 'attur-save-v1';
+const KEY = 'attur-save-v2';
+const LEGACY_KEY = 'attur-save-v1';
 
 const defaults: SaveData = {
   settings: {
     sound: true,
     music: true,
-    voice: true,
+    voice: false,
     largeText: false,
     highContrast: false,
     reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -76,7 +77,16 @@ const defaults: SaveData = {
 
 function load(): SaveData {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
+    let raw = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (!raw) {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null');
+      if (legacy) {
+        raw = {
+          ...legacy,
+          settings: { ...legacy.settings, voice: false },
+        };
+      }
+    }
     if (raw) {
       return {
         ...defaults,
