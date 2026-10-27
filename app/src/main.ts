@@ -45,7 +45,8 @@ function home() {
 
 /* ---------------- Level map ---------------- */
 
-let currentChallengeId = 'staircase';
+const urlParams = new URLSearchParams(window.location.search);
+let currentChallengeId = urlParams.get('ch') || 'staircase';
 
 function map(chId = currentChallengeId) {
   currentChallengeId = chId;
@@ -141,6 +142,9 @@ function map(chId = currentChallengeId) {
       setTimeout(() => playLevel(ch, levels, Number(b.dataset.i), () => map(ch.id)), 280);
     };
   });
+
+  const activeTab = document.querySelector<HTMLElement>('.challenge-tab.active');
+  if (activeTab) activeTab.scrollIntoView({ inline: 'center', block: 'nearest' });
 
   const cur = document.querySelector<HTMLElement>('.node.current');
   if (cur) {

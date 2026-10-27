@@ -46,6 +46,7 @@ export interface LevelDef {
   vanish?: boolean;
   routineSubMode?: 'pair' | 'where' | 'missing' | 'changed' | 'detective';
   audioSubMode?: 'hear' | 'match' | 'order' | 'chain' | 'master';
+  audioDurationSec?: number;
   enabled?: boolean;
 }
 
@@ -149,11 +150,11 @@ export const CHALLENGES: ChallengeDef[] = [
     emoji: '🎧',
     available: true,
     levels: [
-      { id: 'hear-and-find', name: 'Hear & Find', intro: 'Listen closely to the sound cue and pick the matching object!', rounds: [3, 3, 4], stepMs: 1500, reviewMs: null, distractors: 3, mode: 'audio', audioSubMode: 'hear' },
-      { id: 'sound-match', name: 'Sound Match', intro: 'Sounds are playing from the speakers! Match each audio cue to its card.', rounds: [3, 4, 4], stepMs: 1400, reviewMs: null, distractors: 4, mode: 'audio', audioSubMode: 'match' },
-      { id: 'listen-in-order', name: 'Listen in Order', intro: 'Hear a musical sequence of items. Tap them back in the exact order you heard!', rounds: [3, 3, 4], stepMs: 900, reviewMs: null, distractors: 2, mode: 'audio', audioSubMode: 'order' },
-      { id: 'sound-chain', name: 'Sound Chain', intro: 'Longer sound sequences are playing in the studio! Keep up with the rhythmic chain.', rounds: [4, 4, 5], stepMs: 800, reviewMs: null, distractors: 3, mode: 'audio', audioSubMode: 'chain' },
-      { id: 'sound-master', name: 'Sound Master', intro: 'Fast tempo, long audio chains, and tricky distractors. Become the Golden Ear Master!', rounds: [4, 5, 6], stepMs: 700, reviewMs: null, distractors: 4, mode: 'audio', audioSubMode: 'master' },
+      { id: 'hear-and-find', name: 'Hear & Find', intro: 'Memorize 3 objects and their sounds (3 sec showcase). Then identify the mystery sound!', rounds: [3, 3, 3], stepMs: 1000, reviewMs: null, distractors: 0, mode: 'audio', audioSubMode: 'hear', audioDurationSec: 3 },
+      { id: 'sound-match', name: 'Sound Match', intro: '4 objects with 3-second showcases. Listen to their sounds and match the mystery tone!', rounds: [4, 4, 4], stepMs: 1000, reviewMs: null, distractors: 0, mode: 'audio', audioSubMode: 'hear', audioDurationSec: 3 },
+      { id: 'listen-in-order', name: 'Faster Pace', intro: '4 objects, fast pace (2 seconds each). Can you remember all four distinct sounds?', rounds: [4, 4, 4], stepMs: 1000, reviewMs: null, distractors: 0, mode: 'audio', audioSubMode: 'hear', audioDurationSec: 2 },
+      { id: 'sound-chain', name: 'Sound Chain', intro: '5 objects with 2-second showcases! A bigger constellation of sound-object pairs.', rounds: [5, 5, 5], stepMs: 1000, reviewMs: null, distractors: 0, mode: 'audio', audioSubMode: 'hear', audioDurationSec: 2 },
+      { id: 'sound-master', name: 'Sound Master', intro: '5 objects, lightning 1-second pulse! The ultimate test of instant audio-visual memory.', rounds: [5, 5, 5], stepMs: 1000, reviewMs: null, distractors: 0, mode: 'audio', audioSubMode: 'hear', audioDurationSec: 1 },
     ],
   },
 ];

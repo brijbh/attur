@@ -1002,54 +1002,119 @@ html.hc .modal .card { background: #000; }
   box-shadow: 0 0 1rem rgba(255, 107, 107, 0.6) !important;
   animation: shake 0.4s !important;
 }
-.sound-demo-row {
-  display: flex;
-  gap: 0.6rem;
-  justify-content: center;
-  width: 100%;
-  margin: 0.6rem 0;
-}
-.sound-demo-card {
-  flex: 1;
-  max-width: 130px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  border-radius: 1.1rem;
-  padding: 0.6rem 0.4rem;
+/* Showcase Stage Styles */
+.showcase-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
-  cursor: pointer;
-  transition: transform 0.2s, border-color 0.2s, background 0.2s;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+.showcase-avatar-wrap {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  display: grid;
+  place-items: center;
+}
+.showcase-img {
+  width: 66px;
+  height: 66px;
+  object-fit: contain;
+  transition: transform 0.15s var(--ease-pop);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+.showcase-img.pulse {
+  animation: speakerPulse 0.4s ease-in-out;
+}
+.showcase-pulse-ring {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 3px solid #00f2fe;
+  opacity: 0;
+  pointer-events: none;
+}
+.showcase-pulse-ring.active {
+  animation: pulseRing 0.8s cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.showcase-name {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
   color: #fff;
-  text-align: center;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
-.sound-demo-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--gold);
-  background: rgba(255, 255, 255, 0.18);
+.showcase-dots {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
 }
-.sound-demo-card.playing {
-  border-color: #00f2fe;
-  background: rgba(0, 242, 254, 0.25);
-  transform: scale(1.08);
-  box-shadow: 0 0 18px rgba(0, 242, 254, 0.7);
+.timer-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  transition: all 0.2s ease;
 }
-.sound-demo-card img {
-  width: 52px;
-  height: 52px;
+.timer-dot.on {
+  background: #00f2fe;
+  box-shadow: 0 0 10px #00f2fe, 0 0 4px #fff;
+  border-color: #fff;
+  transform: scale(1.2);
+}
+.showcase-queue {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  width: 100%;
+  max-width: 440px;
+}
+.showcase-queue-item {
+  flex: 1;
+  max-width: 78px;
+  padding: 0.4rem 0.2rem 0.35rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  opacity: 0.55;
+  transition: all 0.25s ease;
+}
+.showcase-queue-item img {
+  width: 36px;
+  height: 36px;
   object-fit: contain;
 }
-.sound-demo-card b {
-  font-size: 0.95rem;
+.showcase-queue-item span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
-.sound-demo-card small {
-  font-size: 0.75rem;
-  color: var(--mint);
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
+.showcase-queue-item.active {
+  opacity: 1;
+  transform: translateY(-2px) scale(1.05);
+  border-color: #00f2fe;
+  background: rgba(0, 242, 254, 0.22);
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.5);
+}
+.showcase-queue-item.done {
+  opacity: 0.85;
+  border-color: var(--mint);
+  background: rgba(62, 224, 181, 0.15);
 }
 .audio-slots {
   display: flex;

@@ -1241,237 +1241,181 @@ async function playRoutineRound(c: Ctx, count: number): Promise<RoundResult> {
 const AUDIO_OBJECT_IDS = ['bell', 'guitar', 'clock', 'watch', 'ball', 'cup', 'mug', 'key', 'lamp', 'book', 'umbrella', 'apple'];
 
 async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
-  const subMode = c.level.audioSubMode || 'hear';
   const availableObjects = shuffle(OBJECTS.filter((o) => AUDIO_OBJECT_IDS.includes(o.id)));
 
-  // Submode 1 & 2: Hear & Find / Sound Match
-  if (subMode === 'hear' || subMode === 'match') {
-    const target = availableObjects[0];
-    const distractorCount = Math.min(c.level.distractors || 2, 3);
-    const candidates = shuffle([target, ...availableObjects.slice(1, distractorCount + 1)]);
+  // Audio-Visual Memory: Showcase Phase (Memorize) -> Recall Phase (Match)
+  const durationSec = c.level.audioDurationSec || 3;
+  const candidates = availableObjects.slice(0, count);
+  const target = candidates[Math.floor(Math.random() * candidates.length)];
 
-    app().innerHTML = `<section class="screen">
-      ${hud(c)}
-      <div class="audio-prompt-box">
-        <h2 class="audio-prompt-title">🎵 Listen & Match</h2>
-        <p class="audio-prompt-sub" id="audio-sub">Listen to the mystery sound, then tap the matching item!</p>
-      </div>
-      <div class="audio-stage has-tray">
-        <div class="sound-pod">
-          <div class="speaker-avatar pulse" id="speaker-pod" role="button" aria-label="Replay sound" title="Tap to listen">🔊</div>
-          <div class="audio-pulse-ring active" id="pulse-ring"></div>
-        </div>
-        <div class="equalizer-bar-wrap" id="eq-bars">
-          <div class="eq-bar active"></div>
-          <div class="eq-bar active" style="animation-delay:0.1s"></div>
-          <div class="eq-bar active" style="animation-delay:0.2s"></div>
-          <div class="eq-bar active" style="animation-delay:0.15s"></div>
-          <div class="eq-bar active" style="animation-delay:0.25s"></div>
-        </div>
-        <button class="btn btn-secondary btn-pill" id="replay-sound" style="font-size:0.9rem; padding:0.35rem 1.1rem; min-height:0; margin-top:0.2rem;">▶ Replay Sound</button>
-      </div>
-      <div class="tray ${candidates.length > 3 ? 'small' : ''}" id="audio-tray" style="margin-top:0.6rem; max-width:440px;">
-        ${candidates.map((o) => `
-          <button class="tile audio-tile" data-id="${o.id}" aria-label="${o.name}">
-            <img src="${o.img}" alt="${o.name}">
-            <span>${o.name}</span>
-            <span class="tile-audio-tag">🔊 listen</span>
-          </button>
-        `).join('')}
-      </div>
-    </section>`;
-
-    bindQuit(c);
-
-    const playCue = () => {
-      sfx.objectSound(target.id);
-      const ring = document.getElementById('pulse-ring');
-      if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
-      const spk = document.getElementById('speaker-pod');
-      if (spk) { spk.classList.remove('pulse'); void spk.offsetWidth; spk.classList.add('pulse'); }
-      const bars = document.querySelectorAll('.eq-bar');
-      bars.forEach((b) => b.classList.add('active'));
-      setTimeout(() => bars.forEach((b) => b.classList.remove('active')), 600);
-    };
-
-    setTimeout(playCue, 400);
-    document.getElementById('replay-sound')!.onclick = () => { sfx.tap(); playCue(); };
-    document.getElementById('speaker-pod')!.onclick = () => { sfx.tap(); playCue(); };
-
-    let roundScore = 0;
-    let misses = 0;
-    let locked = false;
-
-    const result = await new Promise<RoundResult>((res) => {
-      document.querySelectorAll<HTMLButtonElement>('#audio-tray .tile').forEach((btn) => {
-        btn.onclick = () => {
-          if (locked) return;
-          const id = btn.dataset.id!;
-          const obj = OBJECTS.find((o) => o.id === id) || { name: id };
-          const { x, y } = centerOf(btn);
-
-          sfx.objectSound(id);
-
-          if (id === target.id) {
-            locked = true;
-            btn.classList.add('good');
-            c.combo++;
-            const pts = 150 + 30 * Math.min(c.combo - 1, 8);
-            roundScore += pts;
-            addScore(c, pts);
-            blast(x, y);
-            sfx.correct(c.combo);
-            starBurst(innerWidth / 2, innerHeight / 2);
-            floatText(x, y - 25, `+${pts}`);
-            const sub = document.getElementById('audio-sub');
-            if (sub) sub.textContent = `✨ Correct! That's the ${target.name}!`;
-            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.35), score: roundScore }), 750);
-          } else {
-            c.combo = 0;
-            misses++;
-            btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
-            sfx.wrong();
-            floatText(x, y - 25, `That's the ${obj.name}!`, 'bad');
-            const sub = document.getElementById('audio-sub');
-            if (sub) sub.textContent = `That was the ${obj.name}! Listen to the sound again...`;
-            setTimeout(() => {
-              playCue();
-            }, 700);
-          }
-        };
-      });
-    });
-
-    return result;
-  }
-
-  // Submode 3, 4, 5: Listen in Order / Sound Chain / Sound Master
-  const sequence = availableObjects.slice(0, count);
-  const distractorCount = c.level.distractors || 2;
-  const distractors = shuffle(OBJECTS.filter((o) => !sequence.includes(o))).slice(0, distractorCount);
-  const trayCards = shuffle([...sequence, ...distractors]);
-
+  // Phase 1: Showcase Phase (Study each item & its sound)
   app().innerHTML = `<section class="screen">
     ${hud(c)}
     <div class="audio-prompt-box">
-      <h2 class="audio-prompt-title" id="audio-title">🎵 Listen carefully to the rhythm sequence...</h2>
-      <p class="audio-prompt-sub">Remember the order of the sounds!</p>
+      <h2 class="audio-prompt-title">🎧 Memorize the Sounds</h2>
+      <p class="audio-prompt-sub" id="showcase-sub">Listen to each item's sound (${durationSec}s each)...</p>
     </div>
     <div class="audio-stage">
-      <div class="sound-pod">
-        <div class="speaker-avatar" id="speaker-pod">🔊</div>
-        <div class="audio-pulse-ring" id="pulse-ring"></div>
+      <div class="showcase-card">
+        <div class="showcase-avatar-wrap">
+          <img class="showcase-img" id="showcase-img" src="${candidates[0].img}" alt="${candidates[0].name}">
+          <div class="showcase-pulse-ring" id="showcase-pulse"></div>
+        </div>
+        <b class="showcase-name" id="showcase-name">${candidates[0].name}</b>
+        <div class="showcase-dots" id="showcase-dots">
+          ${Array.from({ length: durationSec }, () => `<span class="timer-dot"></span>`).join('')}
+        </div>
       </div>
-      <div class="equalizer-bar-wrap" id="eq-bars">
-        <div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div>
-      </div>
-      <div class="audio-slots" id="audio-slots">
-        ${sequence.map((_, i) => `<div class="audio-slot" data-slot="${i}"><span>${i + 1}</span></div>`).join('')}
-      </div>
+    </div>
+    <div class="showcase-queue" style="margin-top:0.6rem;">
+      ${candidates.map((o, idx) => `
+        <div class="showcase-queue-item ${idx === 0 ? 'active' : ''}" id="queue-item-${idx}">
+          <img src="${o.img}" alt="${o.name}">
+          <span>${o.name}</span>
+        </div>
+      `).join('')}
     </div>
   </section>`;
 
   bindQuit(c);
-  speak('Listen to the sounds in order!');
-  await c.sleep(700);
+  await c.sleep(400);
 
-  // Play sequence
-  const playSeq = async () => {
-    const ring = document.getElementById('pulse-ring');
-    const spk = document.getElementById('speaker-pod');
-    const bars = document.querySelectorAll('.eq-bar');
+  // Showcase each object one by one
+  for (let i = 0; i < candidates.length; i++) {
+    const item = candidates[i];
+    const imgEl = document.getElementById('showcase-img') as HTMLImageElement;
+    const nameEl = document.getElementById('showcase-name');
+    const pulseRing = document.getElementById('showcase-pulse');
 
-    for (let i = 0; i < sequence.length; i++) {
-      const item = sequence[i];
-      if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
-      if (spk) { spk.classList.remove('pulse'); void spk.offsetWidth; spk.classList.add('pulse'); }
-      bars.forEach((b) => b.classList.add('active'));
+    if (imgEl) imgEl.src = item.img;
+    if (nameEl) nameEl.textContent = item.name;
+
+    // Highlight queue item
+    document.querySelectorAll('.showcase-queue-item').forEach((el, idx) => {
+      el.classList.remove('active');
+      if (idx === i) el.classList.add('active');
+      else if (idx < i) el.classList.add('done');
+    });
+
+    // Repeat tone every second for durationSec
+    for (let sec = 0; sec < durationSec; sec++) {
+      const dots = document.querySelectorAll('.timer-dot');
+      dots.forEach((dot, dotIdx) => {
+        if (dotIdx <= sec) dot.classList.add('on');
+        else dot.classList.remove('on');
+      });
 
       sfx.objectSound(item.id);
+      if (imgEl) { imgEl.classList.remove('pulse'); void imgEl.offsetWidth; imgEl.classList.add('pulse'); }
+      if (pulseRing) { pulseRing.classList.remove('active'); void pulseRing.offsetWidth; pulseRing.classList.add('active'); }
 
-      const slot = document.querySelector(`.audio-slot[data-slot="${i}"]`);
-      if (slot) {
-        slot.classList.add('filled');
-        if (subMode !== 'master') {
-          slot.innerHTML = `<img src="${item.img}" alt="${item.name}">`;
-        }
-      }
-
-      await c.sleep(c.level.stepMs || 800);
-      bars.forEach((b) => b.classList.remove('active'));
+      await c.sleep(1000);
     }
 
-    // Reset slots for recall
-    document.querySelectorAll('.audio-slot').forEach((slot, i) => {
-      slot.classList.remove('filled');
-      slot.innerHTML = `<span>${i + 1}</span>`;
-    });
+    // Reset dots for next item
+    document.querySelectorAll('.timer-dot').forEach((dot) => dot.classList.remove('on'));
+    await c.sleep(200);
+  }
+
+  // Mark all queue items done
+  document.querySelectorAll('.showcase-queue-item').forEach((el) => {
+    el.classList.remove('active');
+    el.classList.add('done');
+  });
+
+  sfx.whoosh();
+  await c.sleep(350);
+
+  // Phase 2: Recall Phase (Which object made this sound?)
+  const shuffledChoices = shuffle(candidates);
+
+  app().innerHTML = `<section class="screen">
+    ${hud(c)}
+    <div class="audio-prompt-box">
+      <h2 class="audio-prompt-title">🎵 Which object made this sound?</h2>
+      <p class="audio-prompt-sub" id="audio-sub">Tap the speaker to replay, or tap the matching card below!</p>
+    </div>
+    <div class="audio-stage has-tray">
+      <div class="sound-pod">
+        <div class="speaker-avatar pulse" id="speaker-pod" role="button" aria-label="Replay sound" title="Tap to listen">🔊</div>
+        <div class="audio-pulse-ring active" id="pulse-ring"></div>
+      </div>
+      <div class="equalizer-bar-wrap" id="eq-bars">
+        <div class="eq-bar active"></div>
+        <div class="eq-bar active" style="animation-delay:0.1s"></div>
+        <div class="eq-bar active" style="animation-delay:0.2s"></div>
+        <div class="eq-bar active" style="animation-delay:0.15s"></div>
+        <div class="eq-bar active" style="animation-delay:0.25s"></div>
+      </div>
+      <button class="btn btn-secondary btn-pill" id="replay-sound" style="font-size:0.9rem; padding:0.35rem 1.1rem; min-height:0; margin-top:0.2rem;">▶ Replay Sound</button>
+    </div>
+    <div class="tray ${shuffledChoices.length > 3 ? 'small' : ''}" id="audio-tray" style="margin-top:0.6rem; max-width:440px;">
+      ${shuffledChoices.map((o) => `
+        <button class="tile audio-tile" data-id="${o.id}" aria-label="${o.name}">
+          <img src="${o.img}" alt="${o.name}">
+          <span>${o.name}</span>
+          <span class="tile-audio-tag">🔊 tap to match</span>
+        </button>
+      `).join('')}
+    </div>
+  </section>`;
+
+  bindQuit(c);
+
+  const playCue = () => {
+    sfx.objectSound(target.id);
+    const ring = document.getElementById('pulse-ring');
+    if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
+    const spk = document.getElementById('speaker-pod');
+    if (spk) { spk.classList.remove('pulse'); void spk.offsetWidth; spk.classList.add('pulse'); }
+    const bars = document.querySelectorAll('.eq-bar');
+    bars.forEach((b) => b.classList.add('active'));
+    setTimeout(() => bars.forEach((b) => b.classList.remove('active')), 600);
   };
 
-  await playSeq();
+  setTimeout(playCue, 400);
+  document.getElementById('replay-sound')!.onclick = () => { sfx.tap(); playCue(); };
+  document.getElementById('speaker-pod')!.onclick = () => { sfx.tap(); playCue(); };
 
-  // Recall Phase
-  document.querySelector('.audio-stage')?.classList.add('has-tray');
-  const titleEl = document.getElementById('audio-title');
-  if (titleEl) titleEl.textContent = 'Tap the objects in the EXACT order you heard!';
-  speak('Tap the objects in order!');
-
-  const recallTray = document.createElement('div');
-  recallTray.className = `tray ${trayCards.length > 3 ? 'small' : ''}`;
-  recallTray.id = 'audio-recall-tray';
-  recallTray.style.marginTop = '0.5rem';
-  recallTray.style.maxWidth = '440px';
-  recallTray.innerHTML = trayCards.map((o) => `
-    <button class="tile audio-tile" data-id="${o.id}" aria-label="${o.name}">
-      <img src="${o.img}" alt="${o.name}">
-      <span>${o.name}</span>
-    </button>
-  `).join('');
-
-  document.querySelector('.screen')!.appendChild(recallTray);
-
-  let placed = 0;
-  let misses = 0;
   let roundScore = 0;
+  let misses = 0;
+  let locked = false;
 
   const result = await new Promise<RoundResult>((res) => {
-    document.querySelectorAll<HTMLButtonElement>('#audio-recall-tray .tile').forEach((btn) => {
+    document.querySelectorAll<HTMLButtonElement>('#audio-tray .tile').forEach((btn) => {
       btn.onclick = () => {
+        if (locked) return;
         const id = btn.dataset.id!;
-        const expected = sequence[placed];
+        const obj = OBJECTS.find((o) => o.id === id) || { name: id };
         const { x, y } = centerOf(btn);
 
         sfx.objectSound(id);
 
-        if (id === expected.id) {
-          const slot = document.querySelector(`.audio-slot[data-slot="${placed}"]`);
-          if (slot) {
-            slot.classList.add('filled');
-            slot.innerHTML = `<img src="${expected.img}" alt="${expected.name}">`;
-          }
-
-          btn.classList.add('correct');
-          btn.disabled = true;
+        if (id === target.id) {
+          locked = true;
+          btn.classList.add('good');
           c.combo++;
-          placed++;
-          const pts = 120 + 25 * Math.min(c.combo - 1, 8);
+          const pts = 150 + 30 * Math.min(c.combo - 1, 8);
           roundScore += pts;
           addScore(c, pts);
           blast(x, y);
           sfx.correct(c.combo);
+          starBurst(innerWidth / 2, innerHeight / 2);
           floatText(x, y - 25, `+${pts}`);
-
-          if (placed === sequence.length) {
-            comboCheer(c.combo);
-            starBurst(innerWidth / 2, innerHeight / 2);
-            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.25), score: roundScore }), 600);
-          }
+          const sub = document.getElementById('audio-sub');
+          if (sub) sub.textContent = `✨ Correct! That's the ${target.name}!`;
+          setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.35), score: roundScore }), 750);
         } else {
           c.combo = 0;
           misses++;
           btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
           sfx.wrong();
-          floatText(x, y - 25, 'Wrong order!', 'bad');
+          floatText(x, y - 25, `That's the ${obj.name}!`, 'bad');
+          const sub = document.getElementById('audio-sub');
+          if (sub) sub.textContent = `That was the ${obj.name}! Listen to the mystery sound again...`;
+          setTimeout(() => {
+            playCue();
+          }, 700);
         }
       };
     });
