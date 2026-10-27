@@ -2,7 +2,7 @@ import './style.css';
 import { CHALLENGES, OBJECTS, activeLevels } from './data';
 import { applySettings, persist, save, totalStars, AVATARS, TROPHIES_LIST, type Settings } from './store';
 import { initFx, blast, centerOf, sparkle } from './fx';
-import { sfx, speak, unlockAudio } from './audio';
+import { sfx, speak, unlockAudio, bgm } from './audio';
 import { playLevel } from './game';
 
 const app = document.getElementById('app')!;
@@ -81,8 +81,16 @@ function map(chId = currentChallengeId) {
     `)
     .join('');
 
-  const goalName = ch.id === 'assembly' ? '📦 Master Packer' : ch.id === 'grid' ? '🔮 Grid Master' : '🏫 Classroom';
-  const startName = ch.id === 'assembly' ? '⚙️ Infeed Bay' : ch.id === 'grid' ? '⚡ Matrix Core' : '🎒 Start';
+  const goalName =
+    ch.id === 'assembly' ? '📦 Master Packer' :
+    ch.id === 'grid' ? '🔮 Grid Master' :
+    ch.id === 'routine' ? '🔍 Room Detective' :
+    ch.id === 'audio' ? '🎼 Golden Ear' : '🏫 Classroom';
+  const startName =
+    ch.id === 'assembly' ? '⚙️ Infeed Bay' :
+    ch.id === 'grid' ? '⚡ Matrix Core' :
+    ch.id === 'routine' ? '🚪 Front Door' :
+    ch.id === 'audio' ? '🎙️ Green Room' : '🎒 Start';
 
   app.innerHTML = `<section class="screen map">
     <header class="hud">
@@ -233,6 +241,7 @@ function openProfile(back: () => void) {
 function openSettings(back: () => void) {
   const rows: [keyof Settings, string, string][] = [
     ['sound', '🔊 Sound effects', 'Pops, chimes and fanfares'],
+    ['music', '🎵 Ambient music', 'Gentle relaxing background synth tones'],
     ['voice', '🗣️ Voice narration', 'Reads instructions and object names aloud'],
     ['largeText', '🔠 Large text', 'Bigger words and buttons'],
     ['highContrast', '🌗 High contrast', 'Stronger colours for easier reading'],
@@ -257,6 +266,7 @@ function openSettings(back: () => void) {
       persist();
       applySettings();
       sfx.tap();
+      if (inp.dataset.k === 'music') bgm.update();
       if (inp.dataset.k === 'voice' && inp.checked) speak('Voice narration is on.');
     };
   });
@@ -271,7 +281,7 @@ applySettings();
 initFx();
 // Warm image cache so objects pop instantly
 OBJECTS.forEach((o) => (new Image().src = o.img));
-['/bg/staircase.png', '/bg/classroom.png', '/atturr-logo.png', '/favicon.jpg'].forEach((s) => (new Image().src = s));
+['/bg/staircase.png', '/bg/classroom.png', '/bg/assembly.png', '/bg/grid.png', '/bg/routine.png', '/bg/audio.png', '/atturr-logo.png', '/favicon.jpg'].forEach((s) => (new Image().src = s));
 home();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

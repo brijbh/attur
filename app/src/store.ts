@@ -1,5 +1,6 @@
 export interface Settings {
   sound: boolean;
+  music: boolean;
   voice: boolean;
   largeText: boolean;
   highContrast: boolean;
@@ -25,6 +26,9 @@ export const TROPHIES_LIST: TrophyDef[] = [
   { id: 'reverse_master', name: 'Time Bender', desc: 'Clear the Reverse Gear challenge', emoji: '🔄' },
   { id: 'grid_scout', name: 'Matrix Scout', desc: 'Solve your first Grid pattern', emoji: '🟪' },
   { id: 'grid_master', name: 'Grid Master', desc: 'Conquer Level 6 of The Grid', emoji: '🔮' },
+  { id: 'routine_detective', name: 'Room Detective', desc: 'Conquer all 5 Daily Routine levels', emoji: '🏡' },
+  { id: 'sound_master', name: 'Golden Ear', desc: 'Conquer all 5 Audio-Visual Link levels', emoji: '🎧' },
+  { id: 'all_rounder', name: 'Grand Slam', desc: 'Score stars across all 5 game challenges', emoji: '🌟' },
   { id: 'combo_king', name: 'Sharp Mind', desc: 'Achieve a 5x combo streak', emoji: '⚡' },
   { id: 'star_collector', name: 'Star Catcher', desc: 'Earn 15 total stars', emoji: '⭐' },
   { id: 'grandmaster', name: 'Memory Grandmaster', desc: 'Earn 30 total stars', emoji: '👑' },
@@ -50,6 +54,7 @@ const KEY = 'attur-save-v1';
 const defaults: SaveData = {
   settings: {
     sound: true,
+    music: true,
     voice: true,
     largeText: false,
     highContrast: false,
@@ -119,6 +124,13 @@ export function checkTrophies(lastCombo = 0): TrophyDef[] {
   tryUnlock('reverse_master', (save.stars['assembly/reverse-gear'] || 0) > 0);
   tryUnlock('grid_scout', Object.keys(save.stars).some((k) => k.startsWith('grid/') && save.stars[k] > 0));
   tryUnlock('grid_master', (save.stars['grid/grid-master'] || 0) > 0);
+  tryUnlock('routine_detective', ['perfect-pair', 'where-was-it', 'whats-missing', 'something-changed', 'routine-detective'].every((id) => (save.stars[`routine/${id}`] || 0) > 0));
+  tryUnlock('sound_master', ['hear-and-find', 'sound-match', 'listen-in-order', 'sound-chain', 'sound-master'].every((id) => (save.stars[`audio/${id}`] || 0) > 0));
+  
+  const chs = ['staircase', 'assembly', 'grid', 'routine', 'audio'];
+  const hasAll = chs.every((c) => Object.keys(save.stars).some((k) => k.startsWith(`${c}/`) && save.stars[k] > 0));
+  tryUnlock('all_rounder', hasAll);
+
   tryUnlock('combo_king', lastCombo >= 5 || save.stats.highestCombo >= 5);
   tryUnlock('star_collector', starsTotal >= 15);
   tryUnlock('grandmaster', starsTotal >= 30);

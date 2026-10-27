@@ -1,4 +1,4 @@
-import { OBJECTS, type ChallengeDef, type GameObject, type LevelDef } from './data';
+import { OBJECTS, ROOM_SPOTS, type ChallengeDef, type GameObject, type LevelDef } from './data';
 import { sfx, speak } from './audio';
 import { banner, blast, centerOf, confetti, floatText, sparkle, starBurst } from './fx';
 import { recordResult, save } from './store';
@@ -854,6 +854,593 @@ async function playGridRound(c: Ctx, targetCount: number): Promise<RoundResult> 
   return { accuracy: Math.max(0, (found - misses * 0.25) / targetCount), score: roundScore };
 }
 
+/* ---------------- Challenge 4: The Daily Routine ---------------- */
+
+const ROUTINE_PAIRS: [string, string][] = [
+  ['clock', 'watch'],
+  ['cup', 'mug'],
+  ['bell', 'guitar'],
+  ['hat', 'cap'],
+  ['book', 'pencil'],
+  ['key', 'umbrella'],
+  ['lamp', 'book'],
+  ['apple', 'cup'],
+];
+
+async function playRoutineRound(c: Ctx, count: number): Promise<RoundResult> {
+  const subMode = c.level.routineSubMode || 'where';
+
+  // Submode 1: Perfect Pair (associative matching)
+  if (subMode === 'pair') {
+    const availablePairs = shuffle(ROUTINE_PAIRS).slice(0, count);
+    const leftItems: GameObject[] = [];
+    const rightItems: GameObject[] = [];
+    const pairMap = new Map<string, string>();
+
+    availablePairs.forEach(([idA, idB]) => {
+      const objA = OBJECTS.find((o) => o.id === idA)!;
+      const objB = OBJECTS.find((o) => o.id === idB)!;
+      leftItems.push(objA);
+      rightItems.push(objB);
+      pairMap.set(objA.id, objB.id);
+      pairMap.set(objB.id, objA.id);
+    });
+
+    const shuffledLeft = shuffle(leftItems);
+    const shuffledRight = shuffle(rightItems);
+
+    app().innerHTML = `<section class="screen">
+      ${hud(c)}
+      <div class="tray-title">Match items that belong together in daily life!</div>
+      <div class="pair-board">
+        <div class="pair-col" id="pair-col-left">
+          ${shuffledLeft.map((o) => `
+            <button class="pair-card" data-id="${o.id}">
+              <img src="${o.img}" alt="${o.name}">
+              <span>${o.name}</span>
+            </button>
+          `).join('')}
+        </div>
+        <div class="pair-col" id="pair-col-right">
+          ${shuffledRight.map((o) => `
+            <button class="pair-card" data-id="${o.id}">
+              <img src="${o.img}" alt="${o.name}">
+              <span>${o.name}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </section>`;
+
+    bindQuit(c);
+    speak('Tap an item, then tap its matching pair!');
+
+    let selectedLeftId: string | null = null;
+    let selectedLeftBtn: HTMLButtonElement | null = null;
+    let matchedCount = 0;
+    let misses = 0;
+    let roundScore = 0;
+
+    await new Promise<void>((res) => {
+      const leftBtns = document.querySelectorAll<HTMLButtonElement>('#pair-col-left .pair-card');
+      const rightBtns = document.querySelectorAll<HTMLButtonElement>('#pair-col-right .pair-card');
+
+      leftBtns.forEach((btn) => {
+        btn.onclick = () => {
+          if (btn.classList.contains('matched')) return;
+          sfx.tap();
+          leftBtns.forEach((b) => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          selectedLeftId = btn.dataset.id!;
+          selectedLeftBtn = btn;
+          speak(btn.querySelector('span')!.textContent || '');
+        };
+      });
+
+      rightBtns.forEach((btn) => {
+        btn.onclick = () => {
+          if (btn.classList.contains('matched')) return;
+          if (!selectedLeftId || !selectedLeftBtn) {
+            floatText(centerOf(btn).x, centerOf(btn).y - 20, 'Select left card first!', 'bad');
+            sfx.wrong();
+            return;
+          }
+
+          const rightId = btn.dataset.id!;
+          const { x, y } = centerOf(btn);
+
+          if (pairMap.get(selectedLeftId) === rightId) {
+            btn.classList.add('matched');
+            btn.disabled = true;
+            selectedLeftBtn.classList.remove('selected');
+            selectedLeftBtn.classList.add('matched');
+            selectedLeftBtn.disabled = true;
+
+            c.combo++;
+            matchedCount++;
+            const pts = 120 + 25 * Math.min(c.combo - 1, 8);
+            roundScore += pts;
+            addScore(c, pts);
+            blast(x, y);
+            sfx.correct(c.combo);
+            comboCheer(c.combo);
+            floatText(x, y - 25, `+${pts}`);
+
+            selectedLeftId = null;
+            selectedLeftBtn = null;
+
+            if (matchedCount === count) setTimeout(res, 600);
+          } else {
+            c.combo = 0;
+            misses++;
+            btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+            sfx.wrong();
+            floatText(x, y - 25, 'Not a pair', 'bad');
+          }
+        };
+      });
+    });
+
+    return { accuracy: Math.max(0, (matchedCount - misses * 0.25) / count), score: roundScore };
+  }
+
+  // Common room setup for where / missing / changed / detective
+  const spots = shuffle(ROOM_SPOTS).slice(0, count);
+  const items = shuffle(OBJECTS).slice(0, count);
+
+  // Memorize Phase
+  app().innerHTML = `<section class="screen">
+    ${hud(c)}
+    <div class="tray-title" id="room-prompt">Memorize where each object is resting in the room!</div>
+    <div class="routine-stage" id="routine-stage">
+      ${spots.map((s, i) => `
+        <div class="room-spot" style="left:${s.x}%; top:${s.y}%;">
+          <img class="room-item-img" src="${items[i].img}" alt="${items[i].name}">
+        </div>
+      `).join('')}
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:0.6rem;">
+      <button class="btn btn-primary btn-big pulse" id="routine-ready">Ready!</button>
+    </div>
+  </section>`;
+
+  bindQuit(c);
+  sfx.spotReveal();
+  speak('Take a look at where everything is resting in the room.');
+
+  await new Promise<void>((res) => {
+    const readyBtn = document.getElementById('routine-ready')!;
+    readyBtn.onclick = () => { sfx.tap(); res(); };
+    if (c.level.reviewMs) {
+      setTimeout(res, c.level.reviewMs);
+    }
+  });
+
+  sfx.whoosh();
+
+  // Submode 2: Where was it?
+  if (subMode === 'where') {
+    let found = 0;
+    let misses = 0;
+    let roundScore = 0;
+
+    const askOrder = shuffle([...Array(count).keys()]);
+
+    for (const itemIdx of askOrder) {
+      const targetItem = items[itemIdx];
+
+      app().innerHTML = `<section class="screen">
+        ${hud(c)}
+        <div class="tray-title">Where was the <b>${targetItem.name}</b> placed?</div>
+        <div class="routine-stage" id="routine-stage">
+          ${spots.map((s, i) => `
+            <button class="room-spot target-spot" data-idx="${i}" style="left:${s.x}%; top:${s.y}%;" aria-label="${s.name}">
+              <span class="room-spot-marker">?</span>
+            </button>
+          `).join('')}
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:0.6rem; margin-top:0.6rem;">
+          <img src="${targetItem.img}" alt="${targetItem.name}" style="width:48px; height:48px; object-fit:contain;">
+          <span style="font-weight:800; font-size:1.15rem; color:var(--gold);">${targetItem.name}</span>
+        </div>
+      </section>`;
+
+      bindQuit(c);
+      speak(`Where was the ${targetItem.name}?`);
+
+      await new Promise<void>((res) => {
+        document.querySelectorAll<HTMLButtonElement>('.room-spot.target-spot').forEach((btn) => {
+          btn.onclick = () => {
+            const idx = Number(btn.dataset.idx);
+            const { x, y } = centerOf(btn);
+
+            if (idx === itemIdx) {
+              btn.innerHTML = `<img class="room-item-img" src="${targetItem.img}" alt="${targetItem.name}">`;
+              btn.classList.remove('target-spot');
+              c.combo++;
+              found++;
+              const pts = 120 + 25 * Math.min(c.combo - 1, 8);
+              roundScore += pts;
+              addScore(c, pts);
+              blast(x, y);
+              sfx.correct(c.combo);
+              comboCheer(c.combo);
+              floatText(x, y - 25, `+${pts}`);
+              setTimeout(res, 500);
+            } else {
+              c.combo = 0;
+              misses++;
+              btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+              sfx.wrong();
+              floatText(x, y - 25, 'Wrong spot!', 'bad');
+            }
+          };
+        });
+      });
+    }
+
+    return { accuracy: Math.max(0, (found - misses * 0.25) / count), score: roundScore };
+  }
+
+  // Submode 3: What's Missing?
+  if (subMode === 'missing') {
+    const missingIdx = Math.floor(Math.random() * count);
+    const missingItem = items[missingIdx];
+    const distractorPool = shuffle(OBJECTS.filter((o) => !items.includes(o))).slice(0, 3);
+    const trayOptions = shuffle([missingItem, ...distractorPool]);
+
+    app().innerHTML = `<section class="screen">
+      ${hud(c)}
+      <div class="tray-title">🔍 One item vanished from the room! Which one is missing?</div>
+      <div class="routine-stage" id="routine-stage">
+        ${spots.map((s, i) => `
+          <div class="room-spot" style="left:${s.x}%; top:${s.y}%;">
+            ${i === missingIdx ? `<span class="room-spot-marker" style="opacity:0.6;">?</span>` : `<img class="room-item-img" src="${items[i].img}" alt="${items[i].name}">`}
+          </div>
+        `).join('')}
+      </div>
+      <div class="tray" id="missing-tray" style="margin-top:0.8rem;">
+        ${trayOptions.map((o) => `
+          <button class="card card-btn" data-id="${o.id}">
+            <img src="${o.img}" alt="${o.name}">
+            <span>${o.name}</span>
+          </button>
+        `).join('')}
+      </div>
+    </section>`;
+
+    bindQuit(c);
+    sfx.mystery();
+    speak('One item vanished! Which one is missing?');
+
+    let roundScore = 0;
+    let misses = 0;
+
+    const result = await new Promise<RoundResult>((res) => {
+      document.querySelectorAll<HTMLButtonElement>('#missing-tray .card-btn').forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.dataset.id!;
+          const { x, y } = centerOf(btn);
+
+          if (id === missingItem.id) {
+            btn.classList.add('correct');
+            c.combo++;
+            const pts = 200 + 50 * Math.min(c.combo - 1, 5);
+            roundScore += pts;
+            addScore(c, pts);
+            blast(x, y);
+            sfx.correct(c.combo);
+            starBurst(innerWidth / 2, innerHeight / 2);
+            floatText(x, y - 25, `+${pts}`);
+            res({ accuracy: Math.max(0, 1 - misses * 0.4), score: roundScore });
+          } else {
+            c.combo = 0;
+            misses++;
+            btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+            sfx.wrong();
+            floatText(x, y - 25, 'Not this item', 'bad');
+          }
+        };
+      });
+    });
+
+    return result;
+  }
+
+  // Submode 4 & 5: Something Changed / Routine Detective
+  const isDetective = subMode === 'detective';
+  const changedIdx = Math.floor(Math.random() * count);
+  const lookAlikeReplacements: Record<string, string> = {
+    clock: 'watch', watch: 'clock',
+    hat: 'cap', cap: 'hat',
+    cup: 'mug', mug: 'cup',
+    bell: 'guitar', guitar: 'bell',
+  };
+  const original = items[changedIdx];
+  const replacementId = lookAlikeReplacements[original.id] || (items[(changedIdx + 1) % count].id);
+  const replacementItem = OBJECTS.find((o) => o.id === replacementId) || OBJECTS[0];
+
+  const vanishedIdx = isDetective ? (changedIdx + 1) % count : -1;
+
+  app().innerHTML = `<section class="screen">
+    ${hud(c)}
+    <div class="tray-title">🔍 ${isDetective ? 'Two anomalies in the room! Tap the changed and missing spots.' : 'Something changed in the room! Tap the anomaly spot.'}</div>
+    <div class="routine-stage" id="routine-stage">
+      ${spots.map((s, i) => {
+        let content = `<img class="room-item-img" src="${items[i].img}" alt="${items[i].name}">`;
+        if (i === changedIdx) {
+          content = `<img class="room-item-img" src="${replacementItem.img}" alt="${replacementItem.name}">`;
+        } else if (i === vanishedIdx) {
+          content = `<span class="room-spot-marker" style="opacity:0.7;">?</span>`;
+        }
+        return `<button class="room-spot target-spot" data-idx="${i}" style="left:${s.x}%; top:${s.y}%;">${content}</button>`;
+      }).join('')}
+    </div>
+  </section>`;
+
+  bindQuit(c);
+  sfx.mystery();
+  speak('Look closely... what changed in the room?');
+
+  let roundScore = 0;
+  let misses = 0;
+  const targets = new Set([changedIdx, ...(vanishedIdx >= 0 ? [vanishedIdx] : [])]);
+  const foundSpots = new Set<number>();
+
+  const result = await new Promise<RoundResult>((res) => {
+    document.querySelectorAll<HTMLButtonElement>('.room-spot.target-spot').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        const { x, y } = centerOf(btn);
+
+        if (targets.has(idx) && !foundSpots.has(idx)) {
+          foundSpots.add(idx);
+          btn.classList.add('correct');
+          btn.style.borderColor = '#10ac84';
+          c.combo++;
+          const pts = 180 + 30 * Math.min(c.combo - 1, 5);
+          roundScore += pts;
+          addScore(c, pts);
+          blast(x, y);
+          sfx.correct(c.combo);
+          floatText(x, y - 25, `Spotted! +${pts}`);
+
+          if (foundSpots.size === targets.size) {
+            starBurst(innerWidth / 2, innerHeight / 2);
+            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.3), score: roundScore }), 600);
+          }
+        } else {
+          c.combo = 0;
+          misses++;
+          btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+          sfx.wrong();
+          floatText(x, y - 25, 'Nothing changed here', 'bad');
+        }
+      };
+    });
+  });
+
+  return result;
+}
+
+/* ---------------- Challenge 5: The Audio-Visual Link ---------------- */
+
+const AUDIO_OBJECT_IDS = ['bell', 'guitar', 'clock', 'watch', 'ball', 'cup', 'mug', 'key', 'lamp', 'book', 'umbrella', 'apple'];
+
+async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
+  const subMode = c.level.audioSubMode || 'hear';
+  const availableObjects = shuffle(OBJECTS.filter((o) => AUDIO_OBJECT_IDS.includes(o.id)));
+
+  // Submode 1 & 2: Hear & Find / Sound Match
+  if (subMode === 'hear' || subMode === 'match') {
+    const target = availableObjects[0];
+    const distractorCount = c.level.distractors || 3;
+    const distractors = shuffle(OBJECTS.filter((o) => o.id !== target.id)).slice(0, distractorCount);
+    const trayCards = shuffle([target, ...distractors]);
+
+    app().innerHTML = `<section class="screen">
+      ${hud(c)}
+      <div class="tray-title">Listen closely to the audio cue! Which object made that sound?</div>
+      <div class="audio-stage">
+        <div class="turntable-wrap">
+          <div class="turntable-vinyl pulse" id="turntable"></div>
+          <div class="audio-pulse-ring active" id="pulse-ring"></div>
+        </div>
+        <div class="equalizer-bar-wrap">
+          <div class="eq-bar active"></div>
+          <div class="eq-bar active" style="animation-delay:0.1s"></div>
+          <div class="eq-bar active" style="animation-delay:0.2s"></div>
+          <div class="eq-bar active" style="animation-delay:0.15s"></div>
+          <div class="eq-bar active" style="animation-delay:0.25s"></div>
+        </div>
+        <button class="btn btn-secondary btn-pill" id="replay-sound">🔊 Replay Sound</button>
+      </div>
+      <div class="tray" id="audio-tray" style="margin-top:0.8rem;">
+        ${trayCards.map((o) => `
+          <button class="card card-btn" data-id="${o.id}">
+            <img src="${o.img}" alt="${o.name}">
+            <span>${o.name}</span>
+          </button>
+        `).join('')}
+      </div>
+    </section>`;
+
+    bindQuit(c);
+    const playCue = () => {
+      sfx.objectSound(target.id);
+      const ring = document.getElementById('pulse-ring');
+      if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
+      const vinyl = document.getElementById('turntable');
+      if (vinyl) { vinyl.classList.remove('pulse'); void vinyl.offsetWidth; vinyl.classList.add('pulse'); }
+    };
+
+    setTimeout(playCue, 400);
+    document.getElementById('replay-sound')!.onclick = () => { sfx.tap(); playCue(); };
+
+    let roundScore = 0;
+    let misses = 0;
+
+    const result = await new Promise<RoundResult>((res) => {
+      document.querySelectorAll<HTMLButtonElement>('#audio-tray .card-btn').forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.dataset.id!;
+          const { x, y } = centerOf(btn);
+
+          if (id === target.id) {
+            btn.classList.add('correct');
+            c.combo++;
+            const pts = 150 + 30 * Math.min(c.combo - 1, 8);
+            roundScore += pts;
+            addScore(c, pts);
+            blast(x, y);
+            sfx.correct(c.combo);
+            starBurst(innerWidth / 2, innerHeight / 2);
+            floatText(x, y - 25, `+${pts}`);
+            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.35), score: roundScore }), 600);
+          } else {
+            c.combo = 0;
+            misses++;
+            btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+            sfx.wrong();
+            floatText(x, y - 25, 'Sound mismatch', 'bad');
+          }
+        };
+      });
+    });
+
+    return result;
+  }
+
+  // Submode 3, 4, 5: Listen in Order / Sound Chain / Sound Master
+  const sequence = availableObjects.slice(0, count);
+  const distractorCount = c.level.distractors || 2;
+  const distractors = shuffle(OBJECTS.filter((o) => !sequence.includes(o))).slice(0, distractorCount);
+  const trayCards = shuffle([...sequence, ...distractors]);
+
+  app().innerHTML = `<section class="screen">
+    ${hud(c)}
+    <div class="tray-title" id="audio-title">🎵 Listen carefully to the rhythm sequence...</div>
+    <div class="audio-stage">
+      <div class="turntable-wrap">
+        <div class="turntable-vinyl" id="turntable"></div>
+        <div class="audio-pulse-ring" id="pulse-ring"></div>
+      </div>
+      <div class="equalizer-bar-wrap" id="eq-bars">
+        <div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div><div class="eq-bar"></div>
+      </div>
+      <div class="audio-slots" id="audio-slots">
+        ${sequence.map((_, i) => `<div class="audio-slot" data-slot="${i}"><span>${i + 1}</span></div>`).join('')}
+      </div>
+    </div>
+  </section>`;
+
+  bindQuit(c);
+  speak('Listen to the sounds in order!');
+  await c.sleep(700);
+
+  // Play sequence
+  const playSeq = async () => {
+    const ring = document.getElementById('pulse-ring');
+    const vinyl = document.getElementById('turntable');
+    const bars = document.querySelectorAll('.eq-bar');
+
+    for (let i = 0; i < sequence.length; i++) {
+      const item = sequence[i];
+      if (ring) { ring.classList.remove('active'); void ring.offsetWidth; ring.classList.add('active'); }
+      if (vinyl) { vinyl.classList.remove('pulse'); void vinyl.offsetWidth; vinyl.classList.add('pulse'); }
+      bars.forEach((b) => b.classList.add('active'));
+
+      sfx.objectSound(item.id);
+
+      const slot = document.querySelector(`.audio-slot[data-slot="${i}"]`);
+      if (slot) {
+        slot.classList.add('filled');
+        if (subMode !== 'master') {
+          slot.innerHTML = `<img src="${item.img}" alt="${item.name}">`;
+        }
+      }
+
+      await c.sleep(c.level.stepMs || 800);
+      bars.forEach((b) => b.classList.remove('active'));
+    }
+
+    // Reset slots for recall
+    document.querySelectorAll('.audio-slot').forEach((slot, i) => {
+      slot.classList.remove('filled');
+      slot.innerHTML = `<span>${i + 1}</span>`;
+    });
+  };
+
+  await playSeq();
+
+  // Recall Phase
+  const titleEl = document.getElementById('audio-title');
+  if (titleEl) titleEl.textContent = 'Tap the objects in the EXACT order you heard!';
+  speak('Tap the objects in order!');
+
+  const recallTray = document.createElement('div');
+  recallTray.className = 'tray';
+  recallTray.id = 'audio-recall-tray';
+  recallTray.style.marginTop = '0.8rem';
+  recallTray.innerHTML = trayCards.map((o) => `
+    <button class="card card-btn" data-id="${o.id}">
+      <img src="${o.img}" alt="${o.name}">
+      <span>${o.name}</span>
+    </button>
+  `).join('');
+
+  document.querySelector('.screen')!.appendChild(recallTray);
+
+  let placed = 0;
+  let misses = 0;
+  let roundScore = 0;
+
+  const result = await new Promise<RoundResult>((res) => {
+    document.querySelectorAll<HTMLButtonElement>('#audio-recall-tray .card-btn').forEach((btn) => {
+      btn.onclick = () => {
+        const id = btn.dataset.id!;
+        const expected = sequence[placed];
+        const { x, y } = centerOf(btn);
+
+        sfx.objectSound(id);
+
+        if (id === expected.id) {
+          const slot = document.querySelector(`.audio-slot[data-slot="${placed}"]`);
+          if (slot) {
+            slot.classList.add('filled');
+            slot.innerHTML = `<img src="${expected.img}" alt="${expected.name}">`;
+          }
+
+          btn.classList.add('correct');
+          btn.disabled = true;
+          c.combo++;
+          placed++;
+          const pts = 120 + 25 * Math.min(c.combo - 1, 8);
+          roundScore += pts;
+          addScore(c, pts);
+          blast(x, y);
+          sfx.correct(c.combo);
+          floatText(x, y - 25, `+${pts}`);
+
+          if (placed === sequence.length) {
+            comboCheer(c.combo);
+            starBurst(innerWidth / 2, innerHeight / 2);
+            setTimeout(() => res({ accuracy: Math.max(0, 1 - misses * 0.25), score: roundScore }), 600);
+          }
+        } else {
+          c.combo = 0;
+          misses++;
+          btn.classList.remove('wrong'); void btn.offsetWidth; btn.classList.add('wrong');
+          sfx.wrong();
+          floatText(x, y - 25, 'Wrong order!', 'bad');
+        }
+      };
+    });
+  });
+
+  return result;
+}
+
 /* ---------------- Item Selector Helper ---------------- */
 
 function selectRoundItems(c: Ctx, count: number): GameObject[] {
@@ -902,6 +1489,10 @@ export async function playLevel(
         await memorizeConveyor(c, items);
         sfx.whoosh();
         res = await recallSequence(c, items, level.id === 'reverse-gear');
+      } else if (challenge.id === 'routine') {
+        res = await playRoutineRound(c, level.rounds[r]);
+      } else if (challenge.id === 'audio') {
+        res = await playAudioRound(c, level.rounds[r]);
       } else {
         const items = selectRoundItems(c, level.rounds[r]);
         await memorize(c, items);

@@ -685,6 +685,229 @@ html.hc .modal .card { background: #000; }
   display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; justify-content: center;
 }
 
+/* ============ Challenge 4: The Daily Routine ============ */
+.routine-stage {
+  position: relative;
+  width: 100%;
+  height: 58vh;
+  min-height: 380px;
+  max-height: 520px;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  background: #2a1b14 url('/bg/routine.png') center/cover no-repeat;
+  border: 3px solid rgba(255, 201, 60, 0.4);
+}
+.room-spot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 5;
+}
+.room-spot.target-spot {
+  background: radial-gradient(circle, rgba(255, 201, 60, 0.45) 0%, rgba(255, 201, 60, 0.1) 70%, transparent 100%);
+  border: 2px dashed var(--gold);
+  animation: spotPulse 2s infinite ease-in-out;
+}
+.room-spot.target-spot:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  border-color: #fff;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, rgba(255, 201, 60, 0.3) 70%, transparent 100%);
+}
+@keyframes spotPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 12px rgba(255, 201, 60, 0.4); }
+  50% { transform: translate(-50%, -50%) scale(1.08); box-shadow: 0 0 24px rgba(255, 201, 60, 0.85); }
+}
+.room-spot-marker {
+  font-size: 1.5rem;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  pointer-events: none;
+}
+.room-item-img {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.5));
+  animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+.pair-board {
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+  width: 100%;
+  max-width: 540px;
+  margin: 0.5rem auto;
+}
+.pair-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+}
+.pair-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: #fff;
+  font-weight: 700;
+}
+.pair-card img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+.pair-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--gold);
+  background: rgba(255, 255, 255, 0.2);
+}
+.pair-card.selected {
+  border-color: var(--gold);
+  background: rgba(255, 201, 60, 0.28);
+  box-shadow: 0 0 16px var(--gold);
+  transform: scale(1.04);
+}
+.pair-card.matched {
+  border-color: #10ac84;
+  background: rgba(16, 172, 132, 0.25);
+  opacity: 0.65;
+  cursor: default;
+}
+
+/* ============ Challenge 5: The Audio-Visual Link ============ */
+.audio-stage {
+  position: relative;
+  width: 100%;
+  height: 54vh;
+  min-height: 350px;
+  max-height: 480px;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  background: #0f1026 url('/bg/audio.png') center/cover no-repeat;
+  border: 3px solid rgba(79, 172, 254, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+.turntable-wrap {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.turntable-vinyl {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ff007f 0%, #111 60%, #000 100%);
+  border: 4px solid #222;
+  box-shadow: 0 0 24px rgba(255, 0, 127, 0.5), inset 0 0 16px rgba(255, 255, 255, 0.2);
+  animation: spinRecord 6s linear infinite;
+}
+.turntable-vinyl.pulse {
+  animation: spinRecord 2s linear infinite, vinylBeat 0.5s ease-in-out;
+  box-shadow: 0 0 36px #00f2fe, inset 0 0 20px #fff;
+}
+@keyframes spinRecord {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes vinylBeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.audio-pulse-ring {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 3px solid #00f2fe;
+  opacity: 0;
+  pointer-events: none;
+}
+.audio-pulse-ring.active {
+  animation: pulseRing 0.9s cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+@keyframes pulseRing {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.equalizer-bar-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 48px;
+}
+.eq-bar {
+  width: 8px;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ff0844, #ffb199);
+  transition: height 0.15s ease;
+}
+.eq-bar.active {
+  animation: eqBounce 0.4s infinite alternate ease-in-out;
+}
+@keyframes eqBounce {
+  0% { height: 12px; }
+  100% { height: 44px; }
+}
+.audio-slots {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+.audio-slot {
+  width: 60px;
+  height: 60px;
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--muted);
+}
+.audio-slot.filled {
+  border-style: solid;
+  border-color: #00f2fe;
+  background: rgba(0, 242, 254, 0.15);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+}
+.audio-slot img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
 /* ============ Calm mode ============ */
 html.calm *, html.calm *::before, html.calm *::after { animation-iteration-count: 1 !important; }
 html.calm .pulse, html.calm .node.current, html.calm .door, html.calm .logo { animation: none !important; }

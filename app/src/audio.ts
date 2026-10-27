@@ -47,11 +47,97 @@ export const sfx = {
     tone(175, 0.08, 'square', 0.05, 0.04);
   },
   gridTile: (i = 0) => {
-    // Pentatonic scale based notes for pleasant melodic patterns
     const pentatonic = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66];
     const f = pentatonic[i % pentatonic.length] * (i >= pentatonic.length ? 1.5 : 1);
     tone(f, 0.24, 'sine', 0.18);
     tone(f * 2, 0.16, 'triangle', 0.08, 0.02);
+  },
+  spotReveal: () => {
+    tone(440, 0.12, 'sine', 0.12);
+    tone(659.25, 0.18, 'triangle', 0.1, 0.05);
+    tone(880, 0.25, 'sine', 0.08, 0.1);
+  },
+  mystery: () => {
+    tone(329.63, 0.2, 'triangle', 0.14);
+    tone(392.00, 0.22, 'sine', 0.12, 0.08);
+    tone(493.88, 0.3, 'sine', 0.15, 0.16);
+  },
+  audioPulse: () => {
+    tone(523.25, 0.2, 'sine', 0.16);
+    tone(1046.5, 0.15, 'triangle', 0.08, 0.04);
+  },
+  objectSound: (id: string) => {
+    if (!save.settings.sound) return;
+    switch (id) {
+      case 'bell':
+        tone(880, 0.45, 'sine', 0.22);
+        tone(1760, 0.35, 'sine', 0.12, 0.02);
+        tone(2640, 0.25, 'triangle', 0.08, 0.04);
+        break;
+      case 'clock':
+      case 'watch':
+        tone(1100, 0.03, 'triangle', 0.18);
+        tone(820, 0.03, 'triangle', 0.14, 0.12);
+        break;
+      case 'guitar':
+        // Warm plucked chord
+        tone(164.81, 0.45, 'triangle', 0.18);
+        tone(220.00, 0.42, 'triangle', 0.16, 0.025);
+        tone(277.18, 0.40, 'sine', 0.14, 0.05);
+        tone(329.63, 0.50, 'sine', 0.16, 0.075);
+        break;
+      case 'ball':
+        // Cartoon rubber boing
+        tone(180, 0.28, 'sine', 0.22, 0, 520);
+        tone(480, 0.2, 'triangle', 0.12, 0.15, 260);
+        break;
+      case 'cup':
+      case 'mug':
+        // Porcelain ping
+        tone(1975.53, 0.25, 'sine', 0.18);
+        tone(3951.07, 0.15, 'sine', 0.08, 0.02);
+        break;
+      case 'lamp':
+        // Switch click + warm hum
+        tone(480, 0.05, 'square', 0.08);
+        tone(130.81, 0.35, 'sine', 0.18, 0.04);
+        break;
+      case 'key':
+        // Metallic jingle
+        tone(1760, 0.12, 'triangle', 0.12);
+        tone(2217.46, 0.15, 'sine', 0.14, 0.03);
+        tone(2793.83, 0.18, 'sine', 0.10, 0.06);
+        break;
+      case 'book':
+        // Paper page flutter
+        tone(320, 0.12, 'sawtooth', 0.06, 0, 800);
+        tone(450, 0.15, 'triangle', 0.08, 0.04, 200);
+        break;
+      case 'umbrella':
+        // Raindrop sequence
+        tone(1046.5, 0.06, 'sine', 0.12);
+        tone(1318.5, 0.06, 'sine', 0.10, 0.08);
+        tone(1174.6, 0.07, 'sine', 0.12, 0.15);
+        break;
+      case 'apple':
+        // Crisp crunchy bite
+        tone(480, 0.08, 'triangle', 0.16, 0, 180);
+        tone(260, 0.09, 'sawtooth', 0.08, 0.03);
+        break;
+      case 'hat':
+      case 'cap':
+        // Soft hat swoosh
+        tone(350, 0.14, 'triangle', 0.14, 0, 550);
+        break;
+      default: {
+        // Melodic signature for other items
+        const charCode = id.charCodeAt(0) + id.charCodeAt(id.length - 1);
+        const f = scale[charCode % scale.length];
+        tone(f, 0.28, 'sine', 0.18);
+        tone(f * 1.5, 0.22, 'triangle', 0.12, 0.04);
+        break;
+      }
+    }
   },
   correct: (combo: number) => {
     const base = scale[Math.min(combo, scale.length - 1)];
@@ -71,6 +157,84 @@ export const sfx = {
   star: (i: number) => tone(scale[3 + i * 2], 0.3, 'sine', 0.2),
 };
 
+/* ---------------- Ambient Generative BGM ---------------- */
+
+let bgmInterval: number | null = null;
+let bgmGain: GainNode | null = null;
+let bgmFilter: BiquadFilterNode | null = null;
+
+// Peaceful, uplifting pentatonic chord loops
+const CHORD_PROGRESSIONS = [
+  [261.63, 329.63, 392.00, 493.88], // Cmaj7
+  [220.00, 261.63, 329.63, 392.00], // Am7
+  [174.61, 220.00, 261.63, 329.63], // Fmaj7
+  [196.00, 246.94, 293.66, 392.00], // G6
+];
+
+let chordIdx = 0;
+let noteIdx = 0;
+
+export const bgm = {
+  start: () => {
+    if (bgmInterval !== null || !save.settings.music) return;
+    try {
+      const a = ac();
+      if (a.state === 'suspended') return;
+      if (!bgmGain) {
+        bgmGain = a.createGain();
+        bgmGain.gain.setValueAtTime(0.04, a.currentTime);
+        bgmFilter = a.createBiquadFilter();
+        bgmFilter.type = 'lowpass';
+        bgmFilter.frequency.setValueAtTime(950, a.currentTime);
+        bgmFilter.connect(bgmGain);
+        bgmGain.connect(a.destination);
+      }
+
+      bgmInterval = window.setInterval(() => {
+        if (!save.settings.music || !bgmFilter) return;
+        const a = ac();
+        const currentChord = CHORD_PROGRESSIONS[chordIdx];
+        const freq = currentChord[noteIdx % currentChord.length];
+
+        // Soft, gentle bell-like arpeggiation note
+        const osc = a.createOscillator();
+        const g = a.createGain();
+        osc.type = noteIdx % 2 === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, a.currentTime);
+
+        g.gain.setValueAtTime(0.0001, a.currentTime);
+        g.gain.linearRampToValueAtTime(0.035, a.currentTime + 0.15);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 1.4);
+
+        osc.connect(g);
+        g.connect(bgmFilter);
+        osc.start(a.currentTime);
+        osc.stop(a.currentTime + 1.5);
+
+        noteIdx++;
+        if (noteIdx % 4 === 0) {
+          chordIdx = (chordIdx + 1) % CHORD_PROGRESSIONS.length;
+        }
+      }, 750);
+    } catch {
+      // Audio context might not be allowed yet
+    }
+  },
+  stop: () => {
+    if (bgmInterval !== null) {
+      clearInterval(bgmInterval);
+      bgmInterval = null;
+    }
+  },
+  update: () => {
+    if (save.settings.music) {
+      bgm.start();
+    } else {
+      bgm.stop();
+    }
+  },
+};
+
 export function speak(text: string) {
   if (!save.settings.voice || !('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
@@ -81,5 +245,7 @@ export function speak(text: string) {
 }
 
 export function unlockAudio() {
-  ac().resume();
+  ac().resume().then(() => {
+    if (save.settings.music) bgm.start();
+  });
 }
