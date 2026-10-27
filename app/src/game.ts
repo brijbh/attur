@@ -1092,7 +1092,7 @@ async function playRoutineRound(c: Ctx, count: number): Promise<RoundResult> {
     app().innerHTML = `<section class="screen">
       ${hud(c)}
       <div class="tray-title">🔍 One item vanished from the room! Which one is missing?</div>
-      <div class="routine-stage" id="routine-stage">
+      <div class="routine-stage has-tray" id="routine-stage">
         ${spots.map((s, i) => `
           <div class="room-spot" style="left:${s.x}%; top:${s.y}%;">
             ${i === missingIdx ? `<span class="room-spot-marker" style="opacity:0.6;">?</span>` : `<img class="room-item-img" src="${items[i].img}" alt="${items[i].name}">`}
@@ -1241,7 +1241,7 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
     app().innerHTML = `<section class="screen">
       ${hud(c)}
       <div class="tray-title">Listen closely to the audio cue! Which object made that sound?</div>
-      <div class="audio-stage">
+      <div class="audio-stage has-tray">
         <div class="turntable-wrap">
           <div class="turntable-vinyl pulse" id="turntable"></div>
           <div class="audio-pulse-ring active" id="pulse-ring"></div>
@@ -1374,6 +1374,7 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   await playSeq();
 
   // Recall Phase
+  document.querySelector('.audio-stage')?.classList.add('has-tray');
   const titleEl = document.getElementById('audio-title');
   if (titleEl) titleEl.textContent = 'Tap the objects in the EXACT order you heard!';
   speak('Tap the objects in order!');
@@ -1381,7 +1382,7 @@ async function playAudioRound(c: Ctx, count: number): Promise<RoundResult> {
   const recallTray = document.createElement('div');
   recallTray.className = 'tray';
   recallTray.id = 'audio-recall-tray';
-  recallTray.style.marginTop = '0.8rem';
+  recallTray.style.marginTop = '0.5rem';
   recallTray.innerHTML = trayCards.map((o) => `
     <button class="card card-btn" data-id="${o.id}">
       <img src="${o.img}" alt="${o.name}">
