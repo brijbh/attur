@@ -26,7 +26,33 @@ const scale = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5, 156
 export const sfx = {
   tap: () => tone(660, 0.08, 'triangle', 0.12),
   pop: (i = 0) => { tone(scale[i % scale.length], 0.18, 'triangle', 0.16); tone(scale[i % scale.length] * 2, 0.12, 'sine', 0.06, 0.03); },
-  step: () => tone(220, 0.06, 'square', 0.04),
+  step: (i = 0) => {
+    const f = 200 + Math.min(i, 8) * 32;
+    tone(f, 0.07, 'triangle', 0.11);
+    tone(f * 1.5, 0.04, 'sine', 0.05, 0.02);
+  },
+  door: () => {
+    tone(523.25, 0.18, 'sine', 0.14, 0);
+    tone(659.25, 0.22, 'sine', 0.15, 0.08);
+    tone(783.99, 0.35, 'triangle', 0.18, 0.16);
+  },
+  pickup: () => tone(520, 0.06, 'sine', 0.09),
+  snap: () => { tone(380, 0.06, 'triangle', 0.1); tone(760, 0.08, 'sine', 0.08, 0.03); },
+  scan: () => {
+    tone(880, 0.08, 'sine', 0.14);
+    tone(1320, 0.12, 'triangle', 0.1, 0.04);
+  },
+  gear: () => {
+    tone(140, 0.08, 'sawtooth', 0.06);
+    tone(175, 0.08, 'square', 0.05, 0.04);
+  },
+  gridTile: (i = 0) => {
+    // Pentatonic scale based notes for pleasant melodic patterns
+    const pentatonic = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66];
+    const f = pentatonic[i % pentatonic.length] * (i >= pentatonic.length ? 1.5 : 1);
+    tone(f, 0.24, 'sine', 0.18);
+    tone(f * 2, 0.16, 'triangle', 0.08, 0.02);
+  },
   correct: (combo: number) => {
     const base = scale[Math.min(combo, scale.length - 1)];
     tone(base, 0.15, 'triangle', 0.2);

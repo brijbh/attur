@@ -127,7 +127,10 @@ async function memorize(c: Ctx, items: GameObject[]) {
     <div class="stage" style="background-image:url(/bg/staircase.png)">
       ${stageHtml(n, true)}
       <div class="door" aria-hidden="true" style="left:${DOOR.x}%;top:${DOOR.y}%">🚪</div>
-      <div class="walker" id="walker" aria-hidden="true">🧒</div>
+      <div class="walker" id="walker" aria-hidden="true">
+        <img class="walker-sprite" src="/walker.png" alt="" />
+        <div class="walker-shadow"></div>
+      </div>
     </div>
     <p class="caption" id="caption" aria-live="polite">Round ${c.roundIndex + 1}: watch carefully…</p>
     <div class="actions" id="actions"></div>
@@ -138,16 +141,16 @@ async function memorize(c: Ctx, items: GameObject[]) {
   const pads = [...document.querySelectorAll<HTMLElement>('.pad')];
   const moveWalker = (x: number, y: number) => {
     walker.style.left = `${x}%`;
-    walker.style.top = `${y - 9}%`;
+    walker.style.top = `${y - 6}%`;
   };
   moveWalker(70, 99);
   await c.sleep(700);
 
   for (let i = 0; i < n; i++) {
     const p = padPos(i, n);
-    moveWalker(p.x, p.y);
+    moveWalker(p.x - 9, p.y - 5);
     walker.classList.remove('hop'); void walker.offsetWidth; walker.classList.add('hop');
-    sfx.step();
+    sfx.step(i);
     await c.sleep(450);
     const img = document.createElement('img');
     img.src = items[i].img;
@@ -168,7 +171,8 @@ async function memorize(c: Ctx, items: GameObject[]) {
   }
 
   moveWalker(DOOR.x, DOOR.y + 6);
-  sfx.whoosh();
+  walker.classList.add('cheer');
+  sfx.door();
 
   const actions = document.getElementById('actions')!;
   if (c.level.reviewMs === null) {
@@ -199,7 +203,13 @@ function vanish(pad: HTMLElement) {
 async function recallPick(c: Ctx, items: GameObject[]): Promise<RoundResult> {
   const n = items.length;
   const pool = OBJECTS.filter((o) => !items.includes(o));
-  const tray = shuffle([...items, ...shuffle(pool).slice(0, c.level.distractors)]);
+
+  // Prioritize tricky look-alikes of the items shown in this round
+  const lookAlikeGroups = new Set(items.map((o) => o.lookAlikeGroup).filter(Boolean));
+  const lookAlikePool = pool.filter((o) => o.lookAlikeGroup && lookAlikeGroups.has(o.lookAlikeGroup));
+  const genericPool = pool.filter((o) => !lookAlikePool.includes(o));
+  const chosenDistractors = [...shuffle(lookAlikePool), ...shuffle(genericPool)].slice(0, c.level.distractors);
+  const tray = shuffle([...items, ...chosenDistractors]);
   const maxMiss = 3;
 
   app().innerHTML = `<section class="screen play classroom" style="background-image:url(/bg/classroom.png)">
@@ -282,7 +292,7 @@ async function recallPlace(c: Ctx, items: GameObject[]): Promise<RoundResult> {
   const maxMiss = 4;
   app().innerHTML = `<section class="screen play">
     ${hud(c)}
-    <h2 class="prompt compact">Put each object back on its step<small>Tap an object, then tap a step</small></h2>
+    <h2 class="prompt compact">Put each object back on its step<small>Drag to a step, or tap object then step</small></h2>
     <div class="stage short" style="background-image:url(/bg/staircase.png)">${stageHtml(n, true)}</div>
     <div class="tray small">${shuffle(items).map((o) => `<button class="tile" data-id="${o.id}" aria-label="${o.name}"><img src="${o.img}" alt=""><span>${o.name}</span></button>`).join('')}</div>
     <div class="misses">${Array.from({ length: maxMiss }, () => '<span class="heart">💖</span>').join('')}</div>
@@ -296,50 +306,154 @@ async function recallPlace(c: Ctx, items: GameObject[]): Promise<RoundResult> {
   let placed = 0, misses = 0, roundScore = 0;
 
   await new Promise<void>((done) => {
-    const finish = () => done();
-    document.querySelectorAll<HTMLButtonElement>('.tile').forEach((tile) => {
-      tile.onclick = () => {
-        if (tile.disabled) return;
-        selected?.classList.remove('selected');
-        selected = tile;
-        tile.classList.add('selected');
+    const finish = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      cleanDrag();
+      done();
+    };
+
+    const tryPlace = (tile: HTMLButtonElement, padIndex: number) => {
+      if (tile.disabled) return false;
+      const pad = pads[padIndex];
+      if (!pad || pad.classList.contains('filled')) return false;
+
+      const obj = OBJECTS.find((o) => o.id === tile.dataset.id)!;
+      const { x, y } = centerOf(pad);
+      if (items[padIndex] === obj) {
+        c.combo++;
+        placed++;
+        const pts = 100 + 25 * Math.min(c.combo - 1, 8);
+        pad.innerHTML = `<span class="pad-num">${padIndex + 1}</span><img class="obj pop-in" src="${obj.img}" alt="${obj.name}">`;
+        pad.classList.add('filled', 'lit');
+        tile.disabled = true;
+        tile.classList.remove('selected', 'dragging-source');
+        tile.classList.add('picked');
+        selected = null;
+        pads.forEach((p) => p.classList.remove('target', 'drag-hover'));
+        blast(x, y);
+        sfx.correct(c.combo);
+        floatText(x, y - 30, `+${pts}`);
+        comboCheer(c.combo);
+        roundScore += pts;
+        addScore(c, pts);
+        if (placed === n) setTimeout(finish, 500);
+        return true;
+      } else {
+        c.combo = 0;
+        misses++;
+        pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
+        tile.classList.remove('shake'); void tile.offsetWidth; tile.classList.add('shake');
+        sfx.wrong();
+        floatText(x, y - 30, 'Try another step', 'bad');
+        hearts[maxMiss - misses]?.classList.add('lost');
+        if (misses >= maxMiss) setTimeout(finish, 400);
+        return false;
+      }
+    };
+
+    let activeAvatar: HTMLElement | null = null;
+    let currentHoverPad: HTMLElement | null = null;
+    let dragTile: HTMLButtonElement | null = null;
+    let startX = 0, startY = 0, isDragging = false;
+
+    const cleanDrag = () => {
+      if (activeAvatar) {
+        activeAvatar.remove();
+        activeAvatar = null;
+      }
+      if (dragTile) {
+        dragTile.classList.remove('dragging-source');
+        dragTile = null;
+      }
+      if (currentHoverPad) {
+        currentHoverPad.classList.remove('drag-hover');
+        currentHoverPad = null;
+      }
+      isDragging = false;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragTile) return;
+      const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (!isDragging && dist > 8) {
+        isDragging = true;
+        sfx.pickup();
+        const obj = OBJECTS.find((o) => o.id === dragTile!.dataset.id)!;
+        dragTile.classList.add('dragging-source');
+        activeAvatar = document.createElement('div');
+        activeAvatar.className = 'drag-avatar';
+        activeAvatar.innerHTML = `<img src="${obj.img}" alt="${obj.name}" />`;
+        document.body.appendChild(activeAvatar);
         pads.forEach((p) => !p.classList.contains('filled') && p.classList.add('target'));
-        sfx.tap();
-        speak(OBJECTS.find((o) => o.id === tile.dataset.id)!.name);
+      }
+      if (isDragging && activeAvatar) {
+        activeAvatar.style.left = `${e.clientX}px`;
+        activeAvatar.style.top = `${e.clientY}px`;
+
+        const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.pad') as HTMLElement | null;
+        if (el && pads.includes(el) && !el.classList.contains('filled')) {
+          if (currentHoverPad !== el) {
+            currentHoverPad?.classList.remove('drag-hover');
+            currentHoverPad = el;
+            currentHoverPad.classList.add('drag-hover');
+          }
+        } else if (currentHoverPad) {
+          currentHoverPad.classList.remove('drag-hover');
+          currentHoverPad = null;
+        }
+      }
+    };
+
+    const onPointerUp = () => {
+      if (!dragTile) return;
+      const tile = dragTile;
+      const targetPad = currentHoverPad;
+      const wasDragging = isDragging;
+      cleanDrag();
+
+      if (wasDragging && targetPad) {
+        const padIndex = pads.indexOf(targetPad);
+        if (padIndex >= 0) {
+          tryPlace(tile, padIndex);
+          return;
+        }
+      }
+
+      // If it was a quick tap or dropped outside
+      if (!wasDragging) {
+        if (selected === tile) {
+          selected.classList.remove('selected');
+          selected = null;
+          pads.forEach((p) => p.classList.remove('target'));
+        } else {
+          selected?.classList.remove('selected');
+          selected = tile;
+          selected.classList.add('selected');
+          pads.forEach((p) => !p.classList.contains('filled') && p.classList.add('target'));
+          sfx.tap();
+          speak(OBJECTS.find((o) => o.id === tile.dataset.id)!.name);
+        }
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+
+    document.querySelectorAll<HTMLButtonElement>('.tile').forEach((tile) => {
+      tile.onpointerdown = (e) => {
+        if (tile.disabled) return;
+        dragTile = tile;
+        startX = e.clientX;
+        startY = e.clientY;
+        isDragging = false;
       };
     });
+
     pads.forEach((pad, i) => {
       pad.onclick = () => {
         if (!selected || pad.classList.contains('filled')) return;
-        const obj = OBJECTS.find((o) => o.id === selected!.dataset.id)!;
-        const { x, y } = centerOf(pad);
-        if (items[i] === obj) {
-          c.combo++;
-          placed++;
-          const pts = 100 + 25 * Math.min(c.combo - 1, 8);
-          pad.innerHTML = `<span class="pad-num">${i + 1}</span><img class="obj pop-in" src="${obj.img}" alt="${obj.name}">`;
-          pad.classList.add('filled', 'lit');
-          selected.disabled = true;
-          selected.classList.remove('selected');
-          selected.classList.add('picked');
-          selected = null;
-          pads.forEach((p) => p.classList.remove('target'));
-          blast(x, y);
-          sfx.correct(c.combo);
-          floatText(x, y - 30, `+${pts}`);
-          comboCheer(c.combo);
-          roundScore += pts;
-          addScore(c, pts);
-          if (placed === n) setTimeout(finish, 500);
-        } else {
-          c.combo = 0;
-          misses++;
-          pad.classList.remove('shake'); void pad.offsetWidth; pad.classList.add('shake');
-          sfx.wrong();
-          floatText(x, y - 30, 'Try another step', 'bad');
-          hearts[maxMiss - misses]?.classList.add('lost');
-          if (misses >= maxMiss) setTimeout(finish, 400);
-        }
+        tryPlace(selected, i);
       };
     });
   });
@@ -371,14 +485,22 @@ async function results(c: Ctx, acc: number, hasNext: boolean): Promise<'next' | 
   const stars = starsFor(acc);
   const key = `${c.challenge.id}/${c.level.id}`;
   const prevBest = save.best[key] || 0;
-  recordResult(key, stars, c.score);
+  const newTrophies = recordResult(key, stars, c.score, c.combo);
   const passed = stars > 0;
+
+  const trophyHtml = newTrophies.length > 0 ? `
+    <div class="trophy-unlock-banner pop-in">
+      ${newTrophies.map((t) => `<div class="trophy-pill"><span>${t.emoji}</span> <span>Trophy Unlocked: <b>${t.name}</b></span></div>`).join('')}
+    </div>
+  ` : '';
+
   app().innerHTML = `<section class="screen results ${passed ? 'win' : 'lose'}">
     <div class="card pop-in">
       <h1>${passed ? 'Level Complete!' : 'So Close!'}</h1>
       <div class="big-stars">${[0, 1, 2].map((i) => `<span class="big-star" data-i="${i}">★</span>`).join('')}</div>
       <div class="result-score"><small>Score</small><b id="count">0</b>${c.score > prevBest && passed ? '<em class="best pop-in">New best!</em>' : ''}</div>
       <div class="result-acc">Memory accuracy: <b>${Math.round(acc * 100)}%</b></div>
+      ${trophyHtml}
       <p class="encourage">${passed ? (stars === 3 ? 'Outstanding! Your memory is razor sharp. 🧠✨' : 'Great work! Replay for 3 stars.') : 'Every try makes your memory stronger. Give it another go!'}</p>
       <div class="result-actions">
         ${passed && hasNext ? '<button class="btn btn-primary btn-big" id="next-btn">Next Level ▶</button>' : ''}
@@ -426,6 +548,334 @@ async function results(c: Ctx, acc: number, hasNext: boolean): Promise<'next' | 
   });
 }
 
+/* ---------------- Assembly Line: Conveyor Belt Presentation ---------------- */
+
+async function memorizeConveyor(c: Ctx, items: GameObject[]) {
+  const n = items.length;
+  const isReverse = c.level.id === 'reverse-gear';
+  app().innerHTML = `<section class="screen play assembly">
+    ${hud(c)}
+    <div class="conveyor-stage" style="background-image:url(/bg/assembly.png)">
+      ${isReverse ? '<div class="reverse-alert-tag">⚠️ REVERSE GEAR: Remember Backwards!</div>' : ''}
+      <div class="conveyor-system">
+        <div class="scanner-rig" id="scanner-rig">
+          <span class="scanner-head">🤖</span>
+          <div class="scanner-beam"></div>
+        </div>
+        <div class="conveyor-belt-wrap">
+          <div class="conveyor-tread ${isReverse ? 'reverse' : ''}"></div>
+          <div class="conveyor-pedestal"></div>
+        </div>
+      </div>
+      <div class="conveyor-item-wrap" id="belt-item-wrap"></div>
+    </div>
+    <p class="caption" id="caption" aria-live="polite">Round ${c.roundIndex + 1}: watch the assembly line…</p>
+    <div class="actions" id="actions"></div>
+  </section>`;
+  bindQuit(c);
+
+  const scannerRig = document.getElementById('scanner-rig')!;
+  const itemWrap = document.getElementById('belt-item-wrap')!;
+  const caption = document.getElementById('caption')!;
+
+  await c.sleep(600);
+
+  for (let i = 0; i < n; i++) {
+    sfx.gear();
+    itemWrap.innerHTML = `<img class="conveyor-item-img" src="${items[i].img}" alt="${items[i].name}" />`;
+    itemWrap.className = 'conveyor-item-wrap slide-in';
+    await c.sleep(350);
+
+    scannerRig.classList.add('active');
+    sfx.scan();
+    const { x, y } = centerOf(itemWrap);
+    sparkle(x, y - 20, 12, 40);
+    caption.innerHTML = `${isReverse ? 'Item ' + (i + 1) : '#' + (i + 1)}: <b>${items[i].name}</b>`;
+    speak(items[i].name);
+
+    await c.sleep(c.level.stepMs);
+
+    scannerRig.classList.remove('active');
+    itemWrap.className = 'conveyor-item-wrap slide-out';
+    await c.sleep(280);
+    itemWrap.innerHTML = '';
+  }
+
+  const actions = document.getElementById('actions')!;
+  if (c.level.reviewMs === null) {
+    caption.textContent = isReverse
+      ? 'Line finished! Remember the order backwards.'
+      : 'Line finished! Head to the packing station.';
+    actions.innerHTML = `<button class="btn btn-primary btn-big pulse" id="ready-btn">Pack Crates 📦</button>`;
+    await new Promise<void>((res) => (document.getElementById('ready-btn')!.onclick = () => { sfx.tap(); res(); }));
+  } else {
+    const secs = Math.ceil(c.level.reviewMs / 1000);
+    caption.textContent = isReverse ? 'Remember in reverse!' : 'Get ready to pack!';
+    actions.innerHTML = `<div class="timer" style="--dur:${c.level.reviewMs}ms"><span id="tleft">${secs}</span></div>`;
+    for (let s = secs; s > 0; s--) {
+      document.getElementById('tleft')!.textContent = String(s);
+      await c.sleep(1000);
+    }
+  }
+}
+
+/* ---------------- Assembly Line: Recall Sequence ---------------- */
+
+async function recallSequence(c: Ctx, items: GameObject[], isReverse = false): Promise<RoundResult> {
+  const targetItems = isReverse ? [...items].reverse() : items;
+  const n = targetItems.length;
+  const pool = OBJECTS.filter((o) => !items.includes(o));
+
+  const lookAlikeGroups = new Set(items.map((o) => o.lookAlikeGroup).filter(Boolean));
+  const lookAlikePool = pool.filter((o) => o.lookAlikeGroup && lookAlikeGroups.has(o.lookAlikeGroup));
+  const genericPool = pool.filter((o) => !lookAlikePool.includes(o));
+  const chosenDistractors = [...shuffle(lookAlikePool), ...shuffle(genericPool)].slice(0, c.level.distractors);
+  const tray = shuffle([...items, ...chosenDistractors]);
+  const maxMiss = 3;
+
+  app().innerHTML = `<section class="screen play classroom assembly-recall" style="background-image:url(/bg/assembly.png)">
+    ${hud(c)}
+    <h2 class="prompt">
+      ${isReverse ? '🔄 Pack in REVERSE order!' : '📦 Pack in exact sequence!'}
+      <small>${isReverse ? 'Tap the LAST item that came on the belt first' : 'Tap items in the order they rolled by'}</small>
+    </h2>
+    <div class="sequence-slots">
+      ${targetItems.map((_, i) => `
+        <div class="crate-slot" data-i="${i}">
+          <span class="crate-tag">${isReverse ? (i === 0 ? '🏁' : n - i) : i + 1}</span>
+          <span>?</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="tray">${tray.map((o) => `<button class="tile" data-id="${o.id}" aria-label="${o.name}"><img src="${o.img}" alt=""><span>${o.name}</span></button>`).join('')}</div>
+    <div class="misses" aria-label="Misses allowed">${Array.from({ length: maxMiss }, () => '<span class="heart">💖</span>').join('')}</div>
+  </section>`;
+  bindQuit(c);
+  speak(isReverse ? 'Pack items in reverse order!' : 'Pack items in exact sequence!');
+
+  const slots = [...document.querySelectorAll<HTMLElement>('.crate-slot')];
+  const hearts = [...document.querySelectorAll<HTMLElement>('.heart')];
+  let filled = 0, inOrder = 0, misses = 0, roundScore = 0;
+
+  await new Promise<void>((done) => {
+    const finish = () => { document.querySelectorAll<HTMLButtonElement>('.tile').forEach((t) => (t.disabled = true)); done(); };
+    document.querySelectorAll<HTMLButtonElement>('.tile').forEach((tile) => {
+      tile.onclick = () => {
+        if (tile.disabled) return;
+        const obj = OBJECTS.find((o) => o.id === tile.dataset.id)!;
+        const { x, y } = centerOf(tile);
+        const expected = targetItems[filled];
+        if (obj === expected) {
+          tile.disabled = true;
+          tile.classList.add('picked');
+          const slot = slots[filled];
+          slot.innerHTML = `<span class="crate-tag">${isReverse ? (filled === 0 ? '🏁' : n - filled) : filled + 1}</span><img src="${obj.img}" alt="${obj.name}" class="pop-in">`;
+          slot.classList.add('good');
+          c.combo++;
+          inOrder++;
+          const pts = 100 + 25 * Math.min(c.combo - 1, 8);
+          blast(x, y);
+          sfx.correct(c.combo);
+          floatText(x, y - 30, `+${pts}`);
+          comboCheer(c.combo);
+          const s = centerOf(slot);
+          sparkle(s.x, s.y, 8, 25);
+          roundScore += pts;
+          addScore(c, pts);
+          filled++;
+          if (filled === n) setTimeout(finish, 500);
+        } else {
+          c.combo = 0;
+          misses++;
+          tile.classList.remove('shake'); void tile.offsetWidth; tile.classList.add('shake');
+          sfx.wrong();
+          floatText(x, y - 30, targetItems.includes(obj) ? 'Wrong position!' : 'Not this item', 'bad');
+          hearts[maxMiss - misses]?.classList.add('lost');
+          if (misses >= maxMiss) setTimeout(finish, 400);
+        }
+      };
+    });
+  });
+
+  for (let i = filled; i < n; i++) {
+    slots[i].innerHTML = `<span class="crate-tag">${isReverse ? (i === 0 ? '🏁' : n - i) : i + 1}</span><img src="${targetItems[i].img}" alt="${targetItems[i].name}" class="ghost">`;
+    slots[i].classList.add('missed');
+  }
+  await c.sleep(filled < n ? 1800 : 700);
+  return { accuracy: inOrder / n, score: roundScore };
+}
+
+/* ---------------- The Grid: Spatial Memory Round ---------------- */
+
+async function playGridRound(c: Ctx, targetCount: number): Promise<RoundResult> {
+  const size = c.level.gridSize || 4;
+  const totalTiles = size * size;
+  const targetIndices = shuffle(Array.from({ length: totalTiles }, (_, i) => i)).slice(0, targetCount);
+  const maxMiss = 3;
+
+  app().innerHTML = `<section class="screen play grid-screen" style="background-image:url(/bg/grid.png)">
+    ${hud(c)}
+    <h2 class="prompt" id="grid-prompt">
+      ${c.level.sequential ? (c.level.strictOrder ? '🔢 Tap in the EXACT order!' : '💡 Follow the flashing lights!') : '💡 Remember the pattern!'}
+      <small id="grid-sub">${c.level.sequential ? 'Watch the sequence carefully' : 'Memorize which tiles light up'}</small>
+    </h2>
+    <div class="grid-stage">
+      <div class="matrix-container" style="--size:${size}">
+        ${Array.from({ length: totalTiles }, (_, i) => `<button class="matrix-tile" data-idx="${i}" disabled aria-label="Tile ${i + 1}"></button>`).join('')}
+      </div>
+    </div>
+    <div class="misses" aria-label="Misses allowed">${Array.from({ length: maxMiss }, () => '<span class="heart">💖</span>').join('')}</div>
+  </section>`;
+  bindQuit(c);
+
+  const tiles = [...document.querySelectorAll<HTMLButtonElement>('.matrix-tile')];
+  const hearts = [...document.querySelectorAll<HTMLElement>('.heart')];
+  const prompt = document.getElementById('grid-prompt')!;
+  const sub = document.getElementById('grid-sub')!;
+
+  speak(c.level.sequential ? (c.level.strictOrder ? 'Tap in the exact order!' : 'Follow the lights!') : 'Remember the pattern!');
+  await c.sleep(700);
+
+  // --- Flash Phase ---
+  if (c.level.sequential) {
+    for (let step = 0; step < targetIndices.length; step++) {
+      const idx = targetIndices[step];
+      const tile = tiles[idx];
+      tile.classList.add('glowing');
+      sfx.gridTile(step);
+      const { x, y } = centerOf(tile);
+      sparkle(x, y, 10, 30);
+      await c.sleep(c.level.stepMs);
+      tile.classList.remove('glowing');
+      await c.sleep(120);
+    }
+  } else {
+    targetIndices.forEach((idx, i) => {
+      tiles[idx].classList.add('glowing');
+      const { x, y } = centerOf(tiles[idx]);
+      sparkle(x, y, 8, 25);
+      setTimeout(() => sfx.gridTile(i), i * 60);
+    });
+    await c.sleep(c.level.stepMs);
+    targetIndices.forEach((idx) => tiles[idx].classList.remove('glowing'));
+  }
+
+  await c.sleep(350);
+
+  // --- Recall Phase ---
+  sub.textContent = c.level.strictOrder ? 'Tap the tiles in the order they flashed' : 'Tap all the tiles that were glowing';
+  prompt.innerHTML = `Your turn! <b>Tap the tiles</b><small>${sub.textContent}</small>`;
+  speak('Your turn! Tap the tiles.');
+
+  tiles.forEach((t) => (t.disabled = false));
+
+  let found = 0;
+  let misses = 0;
+  let roundScore = 0;
+  const foundSet = new Set<number>();
+
+  await new Promise<void>((done) => {
+    const finish = () => {
+      tiles.forEach((t) => (t.disabled = true));
+      done();
+    };
+
+    tiles.forEach((tile) => {
+      tile.onclick = () => {
+        if (tile.disabled) return;
+        const idx = Number(tile.dataset.idx);
+        const { x, y } = centerOf(tile);
+
+        if (c.level.strictOrder) {
+          const expected = targetIndices[found];
+          if (idx === expected) {
+            tile.disabled = true;
+            tile.classList.add('correct');
+            tile.innerHTML = `<span class="matrix-badge">${found + 1}</span>`;
+            c.combo++;
+            found++;
+            foundSet.add(idx);
+            const pts = 100 + 25 * Math.min(c.combo - 1, 8);
+            blast(x, y);
+            sfx.gridTile(found);
+            floatText(x, y - 25, `+${pts}`);
+            comboCheer(c.combo);
+            roundScore += pts;
+            addScore(c, pts);
+            if (found === targetCount) setTimeout(finish, 500);
+          } else {
+            c.combo = 0;
+            misses++;
+            tile.classList.remove('wrong'); void tile.offsetWidth; tile.classList.add('wrong');
+            sfx.wrong();
+            floatText(x, y - 25, targetIndices.includes(idx) ? 'Wrong order!' : 'Not this tile', 'bad');
+            hearts[maxMiss - misses]?.classList.add('lost');
+            if (misses >= maxMiss) setTimeout(finish, 400);
+          }
+        } else {
+          if (targetIndices.includes(idx) && !foundSet.has(idx)) {
+            tile.disabled = true;
+            tile.classList.add('correct');
+            tile.innerHTML = `<span class="matrix-badge">✓</span>`;
+            c.combo++;
+            found++;
+            foundSet.add(idx);
+            const pts = 100 + 25 * Math.min(c.combo - 1, 8);
+            blast(x, y);
+            sfx.gridTile(found);
+            floatText(x, y - 25, `+${pts}`);
+            comboCheer(c.combo);
+            roundScore += pts;
+            addScore(c, pts);
+            if (found === targetCount) setTimeout(finish, 500);
+          } else {
+            c.combo = 0;
+            misses++;
+            tile.classList.remove('wrong'); void tile.offsetWidth; tile.classList.add('wrong');
+            sfx.wrong();
+            floatText(x, y - 25, 'Not this tile', 'bad');
+            hearts[maxMiss - misses]?.classList.add('lost');
+            if (misses >= maxMiss) setTimeout(finish, 400);
+          }
+        }
+      };
+    });
+  });
+
+  // Reveal missed tiles
+  targetIndices.forEach((idx, i) => {
+    if (!foundSet.has(idx)) {
+      tiles[idx].classList.add('missed-reveal');
+      tiles[idx].innerHTML = `<span class="matrix-badge">${c.level.strictOrder ? i + 1 : '●'}</span>`;
+    }
+  });
+
+  await c.sleep(found < targetCount ? 1800 : 700);
+  return { accuracy: Math.max(0, (found - misses * 0.25) / targetCount), score: roundScore };
+}
+
+/* ---------------- Item Selector Helper ---------------- */
+
+function selectRoundItems(c: Ctx, count: number): GameObject[] {
+  if (c.level.id === 'look-alike') {
+    const pairs: GameObject[][] = [
+      OBJECTS.filter((o) => o.id === 'clock' || o.id === 'watch'),
+      OBJECTS.filter((o) => o.id === 'hat' || o.id === 'cap'),
+      OBJECTS.filter((o) => o.id === 'cup' || o.id === 'mug'),
+      OBJECTS.filter((o) => o.id === 'bell' || o.id === 'guitar'),
+    ];
+    const picked: GameObject[] = [];
+    shuffle(pairs).forEach((pair) => {
+      if (picked.length < count && pair.length === 2) {
+        picked.push(...pair);
+      }
+    });
+    const rest = shuffle(OBJECTS.filter((o) => !picked.includes(o)));
+    return shuffle([...picked, ...rest]).slice(0, count);
+  }
+  return shuffle(OBJECTS).slice(0, count);
+}
+
 /* ---------------- Level flow ---------------- */
 
 export async function playLevel(
@@ -443,10 +893,22 @@ export async function playLevel(
     const accs: number[] = [];
     for (let r = 0; r < level.rounds.length; r++) {
       c.roundIndex = r;
-      const items = shuffle(OBJECTS).slice(0, level.rounds[r]);
-      await memorize(c, items);
-      sfx.whoosh();
-      const res = level.mode === 'place' ? await recallPlace(c, items) : await recallPick(c, items);
+      let res: RoundResult;
+
+      if (challenge.id === 'grid') {
+        res = await playGridRound(c, level.rounds[r]);
+      } else if (challenge.id === 'assembly') {
+        const items = selectRoundItems(c, level.rounds[r]);
+        await memorizeConveyor(c, items);
+        sfx.whoosh();
+        res = await recallSequence(c, items, level.id === 'reverse-gear');
+      } else {
+        const items = selectRoundItems(c, level.rounds[r]);
+        await memorize(c, items);
+        sfx.whoosh();
+        res = level.mode === 'place' ? await recallPlace(c, items) : await recallPick(c, items);
+      }
+
       accs.push(res.accuracy);
       if (r < level.rounds.length - 1) await roundToast(c, res);
     }
